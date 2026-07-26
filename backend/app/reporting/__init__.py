@@ -1,0 +1,1 @@
+"""Sanitized local report generation."""
