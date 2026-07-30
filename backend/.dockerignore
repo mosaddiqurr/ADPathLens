@@ -1,0 +1,10 @@
+.pytest_cache
+.mypy_cache
+.ruff_cache
+tests
+authzdiff.db
+*.sqlite
+*.sqlite3
+*.log
+__pycache__
+**/__pycache__
