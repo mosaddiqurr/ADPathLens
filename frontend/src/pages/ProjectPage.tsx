@@ -269,26 +269,26 @@ function TargetSection({
             <div><dt>Authorization expiry</dt><dd>{chosen.authorization_expires_at ? new Date(chosen.authorization_expires_at).toLocaleString() : "No expiry configured"}</dd></div>
           </dl>
           <div className="button-row">
-            <Button
+            <Button disabled={action.isPending}
               variant="secondary"
               onClick={() => { action.mutate({ path: `/targets/${chosen.id}/confirm-authorization`, payload: { acknowledgement: AUTH_ACK } }); }}
             >Confirm authorization</Button>
             {chosen.local_test_target && (
-              <Button
+              <Button disabled={action.isPending}
                 variant="secondary"
                 onClick={() => { action.mutate({ path: `/targets/${chosen.id}/confirm-lab`, payload: { acknowledgement: LAB_ACK, allow_private_networks: true } }); }}
               >Confirm private lab</Button>
             )}
-            <Button
+            <Button disabled={action.isPending}
               variant="secondary"
               onClick={() => { action.mutate({ path: `/targets/${chosen.id}/validate`, payload: {} }); }}
             >Validate DNS and policy</Button>
-            <Button
+            <Button disabled={action.isPending}
               onClick={() => { action.mutate({ path: `/targets/${chosen.id}`, method: "PATCH", payload: { is_active: true } }); }}
             >Activate target</Button>
             <Button
               variant="danger"
-              disabled={!chosen.is_active}
+              disabled={!chosen.is_active || action.isPending}
               onClick={() => { action.mutate({ path: `/targets/${chosen.id}`, method: "PATCH", payload: { is_active: false } }); }}
             >Disable target</Button>
           </div>
@@ -299,7 +299,7 @@ function TargetSection({
             <Field label="Maximum response bytes"><input name="maximum_response_bytes" type="number" min={1024} max={10 * 1024 * 1024} defaultValue={chosen.maximum_response_bytes} required /></Field>
             <Field label="TLS policy"><select name="tls_policy" defaultValue={chosen.tls_policy}><option value="strict">Strict system trust</option><option value="custom_ca">Configured custom CA</option></select></Field>
             <Field label="Authorization expiry"><input name="expires_at" type="datetime-local" /></Field>
-            <Button type="submit" variant="secondary">Save policy changes</Button>
+            <Button disabled={action.isPending} type="submit" variant="secondary">Save policy changes</Button>
           </form>
           <form className="inline-form" onSubmit={allowlist}>
             <select name="entry_type" aria-label="Allowlist entry type">
@@ -309,7 +309,7 @@ function TargetSection({
             </select>
             <input name="value" aria-label="Allowlist value" defaultValue={chosen.hostname} required />
             <input name="port" aria-label="Allowed port" type="number" defaultValue={chosen.port} required />
-            <Button type="submit" variant="secondary">Add exact allowlist entry</Button>
+            <Button disabled={action.isPending} type="submit" variant="secondary">Add exact allowlist entry</Button>
           </form>
         </Panel>
       )}

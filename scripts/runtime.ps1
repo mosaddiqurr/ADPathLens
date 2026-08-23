@@ -63,7 +63,12 @@ function Get-Records {
 function Test-RecordOwned($Record) {
     $process = Get-Process -Id $Record.pid -ErrorAction SilentlyContinue
     if (-not $process) { return $false }
-    return $process.StartTime.ToUniversalTime().ToString("o") -eq $Record.started_at
+    $recordedStart = if ($Record.started_at -is [datetime]) {
+        $Record.started_at.ToUniversalTime().ToString("o")
+    } else {
+        [string]$Record.started_at
+    }
+    return $process.StartTime.ToUniversalTime().ToString("o") -eq $recordedStart
 }
 
 function Get-ListeningOwner([int]$Port) {

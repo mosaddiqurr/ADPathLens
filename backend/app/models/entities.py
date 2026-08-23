@@ -333,7 +333,7 @@ class ComparisonRun(UUIDPrimaryKeyMixin, Base):
     confidence: Mapped[str | None] = mapped_column(String(16))
     explanation: Mapped[str | None] = mapped_column(Text)
     engine_version: Mapped[str] = mapped_column(
-        String(40), default="authzdiff-rules/1.0", nullable=False
+        String(40), default="authzdiff-rules/1.1", nullable=False
     )
     cancellation_requested: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     progress_completed: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

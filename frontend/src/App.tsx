@@ -8,6 +8,7 @@ import { AuditPage } from "./pages/AuditPage";
 import { AuthPage } from "./pages/AuthPage";
 import { Dashboard } from "./pages/Dashboard";
 import { ProjectPage } from "./pages/ProjectPage";
+import { PasswordChangePage } from "./pages/PasswordChangePage";
 import type { User } from "./types";
 
 export function App() {
@@ -70,6 +71,14 @@ export function App() {
             setSetupRequired(false);
           }}
         />
+      </>
+    );
+  }
+  if (user.must_change_password) {
+    return (
+      <>
+        <a className="skip-link" href="#main-content">Skip to main content</a>
+        <PasswordChangePage onChanged={setUser} onLogout={logout} />
       </>
     );
   }

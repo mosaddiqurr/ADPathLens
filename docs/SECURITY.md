@@ -1,38 +1,34 @@
 # Security model
 
-AuthZDiff is designed for explicit authorized-use workflows, not discovery, crawling, public
-target enumeration, or automatic exploitation.
+AuthZDiff is for explicit authorized testing, not public discovery, crawling, enumeration, or
+automatic exploitation.
 
-Authentication uses Argon2id password hashes and 256-bit opaque session tokens. Only a token hash
-is stored. Cookies are HTTP-only, `SameSite=Strict`, path `/`, and Secure in production. Mutations
-require a session-bound synchronizer token in `X-CSRF-Token`; JSON content type and same-origin
-browser behavior provide additional protection. Login failures are generic and rate limited.
+Authentication uses Argon2id hashes and 256-bit opaque session tokens; only token hashes are stored.
+Cookies are HTTP-only, `SameSite=Strict`, path `/`, and Secure in production. Every mutation requires
+a session-bound synchronizer token in `X-CSRF-Token`. Login failures are generic and rate limited.
+Provisioned users are restricted to logout and password replacement until their temporary password
+is validated and a new 12–128 character password succeeds. Password change rotates the session,
+invalidates other sessions, and clears `must_change_password` only after commit.
 
-Analysts see only projects they created. Every child resource resolves through the project
-authorization service and cross-owner access returns a 404-style problem. Administrators have
-documented workspace-wide oversight. Frontend guards are convenience only; backend checks are
-authoritative.
+Analysts can access only projects they created. Child resources resolve through project ownership,
+and cross-owner identifiers receive the same 404-style response as unknown identifiers.
+Administrators have audited workspace-wide oversight but do not bypass target policy.
 
-Target execution requires all of the following:
+Outbound execution requires active authorization, method/path policy, reserved budget, an exact
+origin and allowlist, private-lab acknowledgement where applicable, validation of every DNS answer,
+and connection to a validated IP while preserving Host and TLS SNI. The fully rendered path and
+every redirect are canonically normalized and revalidated immediately before transmission.
+Environment proxies and `.netrc` are disabled; TLS cannot be disabled.
 
-- active, unexpired authorization;
-- allowed method and normalized path prefix;
-- enough reserved request budget;
-- exact scheme, host, port, and allowlist;
-- private-lab acknowledgement for private or loopback addresses;
-- validation of every A and AAAA answer immediately before connection;
-- connection to a validated IP while preserving approved Host and TLS SNI;
-- independent validation of every redirect.
+Profiles use AES-256-GCM with project/target/profile/field associated data. Key identifiers support
+rotation and fingerprints use a derived HMAC key. Credentials are write-only to users but decryptable
+by the authorized replay worker.
 
-Environment proxies and `.netrc` are disabled. TLS cannot be disabled. HTTP is accepted only for
-the explicit local synthetic target in non-production mode.
+JSON sensitive fields (`password`, `secret`, `token`, `national_id`, `private_key`, and related
+built-ins) plus configured project redaction keys are replaced during normalization, before
+observations or finding evidence are persisted. Safe headers and bounded text receive token
+redaction. Raw binary bodies are hash-only. Reports are generated only from sanitized finding data.
+HTML/PDF escape text, and CSV formula prefixes are neutralized.
 
-Profiles are encrypted with AES-256-GCM. Associated data contains project, target, profile, and
-field identity. Key identifiers support controlled rotation, and fingerprints use a derived HMAC
-key. The UI is write-only, but the backend can decrypt profiles for authorized replay; write-only
-does not mean irrecoverable.
-
-Responses, logs, problems, audit summaries, evidence, and reports pass through bounded
-normalization/redaction. Raw binary bodies are not stored. HTML is escaped and never executed.
-CSV cells beginning with formula markers are neutralized. See `THREAT_MODEL.md` if present and
-the focused documents in this directory.
+The local database and report directory still contain security evidence and must be access-controlled.
+Soft project deletion does not purge that retained data; see `KNOWN-LIMITATIONS.md`.

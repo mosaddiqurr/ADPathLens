@@ -31,6 +31,9 @@ SECRET_HEADERS = {
 SUPPORTED_METHODS = {"GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"}
 STATE_CHANGING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 HEADER_NAME = re.compile(r"^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$")
+INVALID_PERCENT_ESCAPE = re.compile(r"%(?![0-9A-Fa-f]{2})")
+MAX_PATH_DECODE_LAYERS = 8
+PATH_CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]")
 
 
 class RequestImportError(ValueError):
@@ -51,6 +54,38 @@ class ParsedRequest:
     content_type: str | None = None
 
 
+def canonicalize_path(value: str) -> str:
+    """Return the fully decoded path used for authorization-scope decisions."""
+
+    candidate = value
+    for _ in range(MAX_PATH_DECODE_LAYERS):
+        if INVALID_PERCENT_ESCAPE.search(candidate):
+            raise RequestImportError(
+                "invalid_path_encoding", "The request path contains a malformed percent escape."
+            )
+        try:
+            decoded = unquote(candidate, errors="strict")
+        except UnicodeDecodeError as exc:
+            raise RequestImportError(
+                "invalid_path_encoding", "The request path contains invalid percent-encoded text."
+            ) from exc
+        if "\\" in decoded or PATH_CONTROL_CHARACTERS.search(decoded):
+            raise RequestImportError("invalid_path", "The request path is invalid.")
+        if not decoded.startswith("/") or decoded.startswith("//"):
+            raise RequestImportError(
+                "relative_path_required",
+                "Requests must use a relative path on the selected target.",
+            )
+        if any(segment in {".", ".."} for segment in decoded.split("/")):
+            raise RequestImportError("path_escape", "Path traversal segments are not allowed.")
+        if decoded == candidate:
+            return decoded
+        candidate = decoded
+    raise RequestImportError(
+        "path_encoding_too_deep", "The request path uses ambiguous nested percent encoding."
+    )
+
+
 def validate_relative_path(value: str) -> tuple[str, list[list[str]]]:
     if not value or len(value) > 4096 or "\r" in value or "\n" in value or "\\" in value:
         raise RequestImportError("invalid_path", "The request path is invalid.")
@@ -59,12 +94,27 @@ def validate_relative_path(value: str) -> tuple[str, list[list[str]]]:
         raise RequestImportError(
             "relative_path_required", "Requests must use a relative path on the selected target."
         )
-    decoded_segments = unquote(parsed.path).split("/")
-    if any(segment in {".", ".."} for segment in decoded_segments):
-        raise RequestImportError("path_escape", "Path traversal segments are not allowed.")
+    canonicalize_path(parsed.path)
     return parsed.path, [
         [key, value] for key, value in parse_qsl(parsed.query, keep_blank_values=True)
     ]
+
+
+def validate_outbound_path(value: str) -> tuple[str, str]:
+    """Validate a rendered outbound path and return raw and canonical representations."""
+
+    if "?" in value or "#" in value:
+        raise RequestImportError(
+            "rendered_path_delimiter",
+            "Rendered path variables cannot introduce query or fragment delimiters.",
+        )
+    raw_path, query = validate_relative_path(value)
+    if query:
+        raise RequestImportError(
+            "rendered_path_delimiter",
+            "Rendered path variables cannot introduce query parameters.",
+        )
+    return raw_path, canonicalize_path(raw_path)
 
 
 def validate_method(method: str) -> str:
@@ -213,19 +263,35 @@ def parse_har(data: bytes) -> list[ParsedRequest]:
         raise RequestImportError("har_entry_limit", "The HAR contains too many request entries.")
     parsed_requests: list[ParsedRequest] = []
     for entry in entries:
+        if not isinstance(entry, dict):
+            raise RequestImportError("invalid_har_entry", "Each HAR entry must be a JSON object.")
         request = entry.get("request", {})
+        if not isinstance(request, dict):
+            raise RequestImportError(
+                "invalid_har_request", "Each HAR entry must contain a request object."
+            )
         url = urlsplit(str(request.get("url", "")))
         if url.scheme not in {"http", "https"}:
             continue
         path, query = validate_relative_path(
             f"{url.path or '/'}?{url.query}" if url.query else (url.path or "/")
         )
-        headers = [
-            [str(item.get("name", "")), str(item.get("value", ""))]
-            for item in request.get("headers", [])
-        ]
+        raw_headers = request.get("headers", [])
+        if not isinstance(raw_headers, list) or any(
+            not isinstance(item, dict) for item in raw_headers
+        ):
+            raise RequestImportError(
+                "invalid_har_headers", "HAR request headers must be a list of objects."
+            )
+        headers = [[str(item.get("name", "")), str(item.get("value", ""))] for item in raw_headers]
         safe, secret = split_headers(headers)
-        post_data = request.get("postData") or {}
+        post_data = request.get("postData", {})
+        if post_data is None:
+            post_data = {}
+        if not isinstance(post_data, dict):
+            raise RequestImportError(
+                "invalid_har_post_data", "HAR postData must be an object when present."
+            )
         parsed_requests.append(
             ParsedRequest(
                 method=validate_method(str(request.get("method", "GET"))),

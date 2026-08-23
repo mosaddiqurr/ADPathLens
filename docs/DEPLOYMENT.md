@@ -1,21 +1,21 @@
 # Deployment
 
-PostgreSQL is required for production. Supply all settings from a protected environment or secret
-manager. Production validation rejects placeholder or short secrets, insecure session cookies,
-HTTP application/frontend origins, wildcard origins, demo/fixture/E2E modes, and in-process replay.
+The executed release workflow is the local Python/Node/SQLite runtime described in `LOCAL-RUN.md`.
+PostgreSQL drivers, configuration, migrations, Dockerfiles, and a Compose topology are included, but
+Docker and PostgreSQL have not been runtime-validated in the current release environment. Treat the
+Compose configuration as a candidate deployment topology until it passes build, migration, runtime,
+and acceptance testing on the intended host.
 
-Compose builds four application roles plus PostgreSQL:
+Production configuration rejects placeholder/short secrets, insecure session cookies, HTTP public
+origins, wildcard origins, demo/fixture/E2E modes, and in-process replay. Supply settings through a
+protected environment or secret manager.
 
-- `backend`: migrates then starts one FastAPI worker;
-- `worker`: starts `python -m app.worker`;
-- `frontend`: builds the SPA and serves it through Nginx;
-- `demo-target`: internal network only, for local demonstration and never production;
-- `db`: persistent PostgreSQL volume.
+The Compose topology defines PostgreSQL plus backend, external worker, Nginx-served frontend, and an
+internal synthetic demo target. Images run as non-root; application services drop Linux capabilities
+and enable `no-new-privileges`. Nginx binds loopback by default and adds browser security headers.
+The demo target must not be included or exposed in production.
 
-Application images run as non-root. Application services drop Linux capabilities and use
-`no-new-privileges`. The demo target has no published port. Nginx publishes
-`127.0.0.1:8080` by default and adds CSP, frame, referrer, permissions, and content-type headers.
-Report and database volumes are persistent.
+Candidate commands, to be executed only in an equipped validation environment:
 
 ```text
 docker compose build
@@ -25,6 +25,12 @@ docker compose up -d backend worker frontend
 docker compose down
 ```
 
-Do not include `demo-target` in production deployment automation. This repository's Compose file
-is a local controlled-lab topology. Docker runtime status is reported in `RELEASE_STATUS.md` and
-must not be inferred from static configuration.
+Before any production claim, run the full backend/frontend/browser suite against the containerized
+PostgreSQL deployment, verify worker concurrency and restart behavior, and confirm clean shutdown,
+volume ownership, backup, report retention, TLS termination, and secret injection.
+
+## Publishing branch
+
+The repository currently uses the local `master` branch. During the separately authorized
+publishing and history-cleanup phase, rename it to `main` before configuring the GitHub remote. CI
+already treats `main` as the publication branch.

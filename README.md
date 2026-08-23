@@ -1,32 +1,54 @@
 # AuthZDiff
 
-AuthZDiff is a single-workspace authorization-differential testing platform. It replays one
-bounded, explicitly authorized request with two controlled identities, normalizes the responses,
-and records an explainable comparison for human review. Similar successful responses are review
-signals, not automatic proof of exploitation.
+AuthZDiff is a black-box HTTP authorization differential testing application. It sends the same
+bounded request with a higher-privileged and a lower-privileged controlled profile, normalizes the
+two responses, and records differences that may indicate an authorization weakness. Results are
+review candidates, not proof of exploitability.
 
-> Use AuthZDiff only on systems you own or have explicit written permission to assess. The
-> bundled demo target is intentionally vulnerable, contains fictional data only, and must never
-> be exposed publicly.
+AuthZDiff does not import or semantically evaluate IAM/RBAC policies, group graphs, inherited
+permissions, or allow/deny rule sets.
+
+> Use AuthZDiff only on systems you own or have explicit written permission to assess. The bundled
+> demo target is intentionally vulnerable, contains fictional data, and must never be exposed
+> publicly.
+
+## Workflow and capabilities
+
+1. Create a project and an inactive target.
+2. Record the authorized origin, methods, path prefixes, request budget, redirects, TLS policy, and
+   exact host/IP/CIDR allowlist.
+3. Confirm authorization and, for loopback/private targets, the controlled-lab acknowledgement.
+4. Store two encrypted request profiles. Credential values are write-only in the UI/API.
+5. Create a request manually or from raw HTTP/cURL. HAR is **preview only** and is never executed or
+   imported automatically.
+6. Save and run a two-profile comparison through the database-backed worker.
+7. Review normalized observations, genuine redirect/header/JSON/text differences, candidate
+   findings, recurrence history, and sanitized evidence.
+8. Export project findings as JSON, CSV, HTML, or PDF.
+
+Configured project redaction keys and built-in sensitive fields are redacted during normalization,
+before observations or finding evidence are persisted. Test-case ignored JSON paths, unordered JSON
+paths, ignored safe headers, and literal ignored text patterns affect comparison only.
 
 ## Components
 
-- FastAPI API with opaque cookie sessions, synchronizer CSRF, role and object authorization.
-- Database-backed replay queue with atomic claims, worker identity, heartbeat, cancellation,
-  concurrency leases, and stale-job recovery.
-- Pinned-IP outbound HTTP transport with exact target policy, allowlist, DNS and redirect checks.
-- AES-256-GCM write-only profiles and HMAC fingerprints.
-- Deterministic `authzdiff-rules/1.0` comparisons, stable recurring findings, immutable sanitized
-  evidence links, audit events, and JSON/CSV/HTML/PDF reports.
-- React SPA using only the authenticated API.
-- Isolated fictional FastAPI demo target.
+- FastAPI API with Argon2id passwords, opaque cookie sessions, session-bound CSRF, workspace roles,
+  and server-side project isolation.
+- Database-backed replay queue with atomic claims, heartbeats, cancellation, concurrency leases,
+  and stale-job recovery.
+- Pinned-IP HTTP transport with exact origin, DNS, network, canonical path, redirect, size, timeout,
+  and request-budget enforcement immediately before transmission.
+- AES-256-GCM write-only profiles with contextual associated data and HMAC fingerprints.
+- Deterministic `authzdiff-rules/1.1` response comparison and recurring findings.
+- React/TypeScript SPA, including mandatory temporary-password replacement.
+- Synthetic FastAPI demo target and JSON/CSV/HTML/PDF report generation.
 
-PostgreSQL is the supported production database. SQLite is intended for local development,
-tests, and low-concurrency demonstrations.
+SQLite is the executed local/test database. PostgreSQL and Docker Compose configurations are
+included but have not yet been runtime-validated for this release candidate.
 
-## Local run
+## Local installation and startup
 
-Requirements are Python 3.12+, Node.js 22+, and PowerShell on Windows.
+Requirements: Python 3.12+, Node.js 22+, and PowerShell on Windows.
 
 ```powershell
 python -m venv .venv
@@ -34,34 +56,54 @@ python -m venv .venv
 Set-Location frontend
 npm ci
 Set-Location ..
-$env:AUTHZDIFF_ADMIN_PASSWORD = "choose-a-local-password"
+$env:AUTHZDIFF_ADMIN_PASSWORD = "choose-a-local-password-with-12+-characters"
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\runtime.ps1 start
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\runtime.ps1 seed
 ```
 
-Open `http://localhost:4174`. The isolated ports are backend `8020`, frontend `4174`, and demo
-target `8021`. Use `status`, `health`, `stop`, or `restart` with the same launcher. It records
-process identity and stops only processes it started.
+Open `http://localhost:4174`. The launcher owns only the processes it starts. Commands are `start`,
+`status`, `health`, `stop`, `restart`, `migrate`, `seed`, and `reset`. Local secrets, databases,
+logs, reports, and PID data are stored outside tracked source or under ignored runtime paths.
 
-Copy `.env.example` to `.env` only for manual or Compose workflows and replace every placeholder.
-Never commit `.env`.
+Administrators can provision users through the API. A provisioned user signs in with the temporary
+password and is held on the required-password-change screen until the current password is validated
+and a policy-compliant replacement succeeds.
 
 ## Validation
 
 ```powershell
 Set-Location backend
+..\.venv\Scripts\python -m pip check
 ..\.venv\Scripts\python -m ruff format --check --no-cache app tests alembic
 ..\.venv\Scripts\python -m ruff check --no-cache app tests alembic
-..\.venv\Scripts\python -m mypy app
+..\.venv\Scripts\python -m mypy --no-incremental app
 ..\.venv\Scripts\python -m pytest -p no:cacheprovider
+..\.venv\Scripts\python -m pip_audit -r requirements.lock
+..\.venv\Scripts\python -m bandit -q -r app
 
 Set-Location ..\frontend
+npm ci
 npm run lint
+npx tsc --noEmit
 npm test
 npm run build
+npm audit --omit=dev
+npm audit
 npm run e2e
 ```
 
-See [docs/LOCAL-RUN.md](docs/LOCAL-RUN.md), [docs/SECURITY.md](docs/SECURITY.md),
-[docs/TESTING.md](docs/TESTING.md), and [RELEASE_STATUS.md](RELEASE_STATUS.md). Release status
-documents executed evidence and distinguishes unavailable tooling from product limitations.
+Statement and branch coverage thresholds are not currently configured. Playwright runs desktop and
+mobile journeys plus axe scans; automated keyboard-only navigation coverage is not currently
+provided.
+
+## Data retention and limitations
+
+Project deletion is a soft deletion. Deleted projects disappear from normal workflows, but child
+records, observations, evidence, and generated report files are retained until an operator removes
+the local database/report storage under an approved retention procedure. AuthZDiff does not claim
+cryptographic deletion or automatic purge.
+
+See [docs/SECURITY.md](docs/SECURITY.md), [docs/TARGET-POLICY.md](docs/TARGET-POLICY.md),
+[docs/COMPARISON-LOGIC.md](docs/COMPARISON-LOGIC.md),
+[docs/KNOWN-LIMITATIONS.md](docs/KNOWN-LIMITATIONS.md), and
+[docs/TESTING.md](docs/TESTING.md).

@@ -20,7 +20,7 @@ export default defineConfig({
       testMatch: /release\.spec\.ts/,
       use: {
         ...devices["Desktop Chrome"],
-        channel: "msedge",
+        ...(process.env.CI ? {} : { channel: "msedge" as const }),
       },
     },
     {
@@ -29,7 +29,7 @@ export default defineConfig({
       dependencies: ["desktop"],
       use: {
         ...devices["Pixel 7"],
-        channel: "msedge",
+        ...(process.env.CI ? {} : { channel: "msedge" as const }),
       },
     },
   ],

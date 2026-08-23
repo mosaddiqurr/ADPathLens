@@ -194,7 +194,24 @@ async def test_profile_secrets_are_write_only_and_projects_are_isolated(
             },
         )
         assert login.status_code == 200
+        assert login.json()["user"]["must_change_password"] is True
         session_csrf = login.json()["csrf_token"]
+        required = await other.get("/api/v1/projects")
+        assert required.status_code == 403
+        assert required.json()["code"] == "password_change_required"
+        rejected_change = await other.post(
+            "/api/v1/auth/change-password",
+            headers={"X-CSRF-Token": session_csrf},
+            json={
+                "current_password": "incorrect temporary password",
+                "new_password": "permanent analyst password",
+            },
+        )
+        assert rejected_change.status_code == 400
+        assert rejected_change.json()["code"] == "current_password_invalid"
+        still_required = await other.get("/api/v1/projects")
+        assert still_required.status_code == 403
+        assert still_required.json()["code"] == "password_change_required"
         changed = await other.post(
             "/api/v1/auth/change-password",
             headers={"X-CSRF-Token": session_csrf},
@@ -204,6 +221,8 @@ async def test_profile_secrets_are_write_only_and_projects_are_isolated(
             },
         )
         assert changed.status_code == 200
+        assert changed.json()["user"]["must_change_password"] is False
+        assert changed.json()["csrf_token"] != session_csrf
         forbidden = await other.get(f"/api/v1/projects/{project_id}")
         assert forbidden.status_code == 404
         assert forbidden.json()["code"] == "project_not_found"

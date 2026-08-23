@@ -12,7 +12,7 @@ dependencies = [
   "alembic==1.16.5",
   "argon2-cffi==25.1.0",
   "beautifulsoup4==4.13.5",
-  "cryptography==49.0.0",
+  "cryptography==50.0.0",
   "email-validator==2.2.0",
   "fastapi==0.141.1",
   "httpx==0.28.1",
@@ -32,6 +32,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "hypothesis==6.138.13",
+  "bandit==1.9.4",
   "mypy==1.17.1",
   "pip-audit==2.9.0",
   "pytest==9.0.3",

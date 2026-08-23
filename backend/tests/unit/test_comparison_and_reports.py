@@ -18,6 +18,8 @@ def _observation(
     denied: bool = False,
     error: str | None = None,
     truncated: bool = False,
+    redirect: str = "none",
+    headers: list[list[str]] | None = None,
 ) -> Observation:
     return Observation(
         status_code=status,
@@ -28,6 +30,8 @@ def _observation(
         access_denied_marker=denied,
         error_category=error,
         body_truncated=truncated,
+        redirect_outcome=redirect,
+        safe_headers=headers or [],
     )
 
 
@@ -38,7 +42,7 @@ def test_rules_engine_is_versioned_and_recognizes_expected_denial() -> None:
         expected_behaviour="lower_denied",
         is_state_changing=False,
     )
-    assert ENGINE_VERSION == "authzdiff-rules/1.0"
+    assert ENGINE_VERSION == "authzdiff-rules/1.1"
     assert decision.classification == "expected_access_control"
     assert decision.candidate is False
 
@@ -136,6 +140,70 @@ def test_truncation_forces_an_inconclusive_result() -> None:
     )
     assert decision.classification == "inconclusive_truncated_evidence"
     assert decision.candidate is False
+
+
+def test_comparison_emits_real_redirect_header_and_json_value_differences() -> None:
+    decision = compare_observations(
+        _observation(
+            status=200,
+            excerpt='{"owner_id":"user-a"}',
+            structural={"owner_id": "user-a"},
+            redirect="none",
+            headers=[["content-language", "en"]],
+        ),
+        _observation(
+            status=200,
+            excerpt='{"owner_id":"user-b"}',
+            structural={"owner_id": "user-b"},
+            redirect="followed",
+            headers=[["content-language", "fr"]],
+        ),
+        expected_behaviour="different_records",
+        is_state_changing=False,
+    )
+    assert decision.differences["redirect"] == {
+        "high": "none",
+        "low": "followed",
+        "different": True,
+    }
+    assert decision.differences["headers"]["changed"] == {
+        "content-language": {"high": ["en"], "low": ["fr"]}
+    }
+    assert decision.differences["json_value_difference"] == [
+        {"path": "$.owner_id", "high": "user-a", "low": "user-b"}
+    ]
+
+
+def test_comparison_honors_existing_ignore_and_unordered_configuration() -> None:
+    decision = compare_observations(
+        _observation(
+            status=200,
+            excerpt="stable generated-at=one",
+            structural={"roles": ["admin", "reader"], "volatile": "one"},
+            headers=[["cache-control", "private"]],
+        ),
+        _observation(
+            status=200,
+            excerpt="stable generated-at=two",
+            structural={"roles": ["reader", "admin"], "volatile": "two"},
+            headers=[["cache-control", "public"]],
+        ),
+        expected_behaviour="baseline_consistency",
+        is_state_changing=False,
+        ignored_json_paths=["$.volatile"],
+        unordered_json_paths=["$.roles"],
+        ignored_headers=["cache-control"],
+        ignored_text_patterns=["generated-at=one", "generated-at=two"],
+    )
+    assert decision.differences["structure_only_high"] == []
+    assert decision.differences["structure_only_low"] == []
+    assert decision.differences["json_value_difference"] == []
+    assert decision.differences["headers"] == {
+        "only_high": [],
+        "only_low": [],
+        "changed": {},
+    }
+    assert decision.differences["body_similarity"] == 1.0
 
 
 def _report_payload(title: str) -> dict[str, object]:

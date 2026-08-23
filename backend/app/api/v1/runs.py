@@ -302,7 +302,7 @@ async def start_run(
         test_case_id=test_case.id,
         status="queued",
         initiated_by=context.user.id,
-        engine_version="authzdiff-rules/1.0",
+        engine_version="authzdiff-rules/1.1",
         cancellation_requested=False,
         progress_completed=0,
         progress_total=2,

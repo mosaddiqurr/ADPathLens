@@ -23,6 +23,8 @@ SENSITIVE_FIELD_NAMES = {
     "session_id",
     "csrf",
     "ssn",
+    "national_id",
+    "private_key",
     "credit_card",
 }
 SAFE_RESPONSE_HEADERS = {
@@ -67,22 +69,38 @@ def redact_json(
     *,
     path: str = "$",
     redaction_paths: list[str] | None = None,
+    redaction_keys: list[str] | None = None,
 ) -> Any:
     redaction_paths = redaction_paths or []
+    configured_keys = {key.strip().lower() for key in (redaction_keys or []) if key.strip()}
     if _path_matches(path, redaction_paths):
         return "[REDACTED]"
     if isinstance(value, dict):
         result: dict[str, Any] = {}
         for key, item in value.items():
             child_path = f"{path}.{key}"
-            if key.lower() in SENSITIVE_FIELD_NAMES or _path_matches(child_path, redaction_paths):
+            if (
+                key.lower() in SENSITIVE_FIELD_NAMES
+                or key.lower() in configured_keys
+                or _path_matches(child_path, redaction_paths)
+            ):
                 result[key] = "[REDACTED]"
             else:
-                result[key] = redact_json(item, path=child_path, redaction_paths=redaction_paths)
+                result[key] = redact_json(
+                    item,
+                    path=child_path,
+                    redaction_paths=redaction_paths,
+                    redaction_keys=list(configured_keys),
+                )
         return result
     if isinstance(value, list):
         return [
-            redact_json(item, path=f"{path}[]", redaction_paths=redaction_paths)
+            redact_json(
+                item,
+                path=f"{path}[]",
+                redaction_paths=redaction_paths,
+                redaction_keys=list(configured_keys),
+            )
             for item in value[:100]
         ]
     if isinstance(value, str):
@@ -132,6 +150,7 @@ def normalize_response(
     max_excerpt_bytes: int,
     expected_markers: list[str],
     redaction_paths: list[str] | None = None,
+    redaction_keys: list[str] | None = None,
     truncated: bool = False,
 ) -> NormalizedResponse:
     lowered_type = (content_type or "").lower()
@@ -166,7 +185,11 @@ def normalize_response(
     if content_type and "json" in content_type.lower():
         try:
             parsed = json.loads(text)
-            redacted = redact_json(parsed, redaction_paths=redaction_paths)
+            redacted = redact_json(
+                parsed,
+                redaction_paths=redaction_paths,
+                redaction_keys=redaction_keys,
+            )
             structural = redacted if isinstance(redacted, dict | list) else {"value": redacted}
             computed_shape = json_shape(redacted)
             shape = computed_shape if isinstance(computed_shape, dict) else {"$": computed_shape}

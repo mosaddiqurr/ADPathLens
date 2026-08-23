@@ -5,6 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+from app.parsers.request_import import RequestImportError, canonicalize_path
+
 
 class ORMModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -123,12 +125,15 @@ class TargetCreate(BaseModel):
     def validate_path_prefixes(cls, values: list[str]) -> list[str]:
         if not values:
             raise ValueError("At least one allowed path prefix is required.")
+        normalized: set[str] = set()
         for value in values:
-            if not value.startswith("/") or "?" in value or "#" in value or "\\" in value:
+            if "?" in value or "#" in value:
                 raise ValueError("Allowed path prefixes must be absolute URL paths.")
-            if ".." in value.split("/"):
-                raise ValueError("Path traversal segments are not allowed.")
-        return sorted(set(values))
+            try:
+                normalized.add(canonicalize_path(value))
+            except RequestImportError as exc:
+                raise ValueError(exc.detail) from exc
+        return sorted(normalized)
 
     @field_validator("allowed_methods")
     @classmethod

@@ -92,4 +92,53 @@ describe("App authentication boundary", () => {
     expect(localStorage.length).toBe(0);
     expect(sessionStorage.length).toBe(0);
   });
-});
+
+  it("forces temporary-password replacement before application access", async () => {
+    const forcedUser = {
+      id: "user-2",
+      email: "forced@example.invalid",
+      display_name: "Forced Analyst",
+      role: "analyst",
+      is_active: true,
+      must_change_password: true,
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ setup_required: false }))
+      .mockResolvedValueOnce(jsonResponse(forcedUser))
+      .mockResolvedValueOnce(jsonResponse({ csrf_token: "forced-session-csrf" }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          user: { ...forcedUser, must_change_password: false },
+          csrf_token: "rotated-session-csrf",
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse([]));
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+    renderApp();
+
+    expect(
+      await screen.findByRole("heading", { name: "Replace your temporary password" }),
+    ).toBeInTheDocument();
+    await user.type(screen.getByLabelText("Temporary password"), "temporary analyst password");
+    await user.type(screen.getByLabelText(/^New password/), "permanent analyst password");
+    await user.type(screen.getByLabelText("Confirm new password"), "different confirmation");
+    await user.click(screen.getByRole("button", { name: "Change password and continue" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/must match/i);
+    expect(fetchMock.mock.calls.some(([path]) => path === "/api/v1/auth/change-password")).toBe(
+      false,
+    );
+
+    await user.clear(screen.getByLabelText("Confirm new password"));
+    await user.type(screen.getByLabelText("Confirm new password"), "permanent analyst password");
+    await user.click(screen.getByRole("button", { name: "Change password and continue" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/auth/change-password",
+        expect.objectContaining({ method: "POST", credentials: "include" }),
+      );
+    });
+    expect(await screen.findByRole("heading", { name: "Projects" })).toBeInTheDocument();
+  });});

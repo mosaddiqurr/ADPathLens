@@ -1,39 +1,47 @@
 # Testing
 
-Ordinary automated tests use SQLite, ASGI transports, fake resolvers, and synthetic network
-backends. They do not access public websites.
+Automated tests use SQLite, ASGI transports, fake resolvers, controlled loopback services, and
+synthetic data. They do not send requests to public targets.
 
 Backend gates:
 
 ```powershell
 Set-Location backend
+..\.venv\Scripts\python -m pip check
 ..\.venv\Scripts\python -m ruff format --check --no-cache app tests alembic
 ..\.venv\Scripts\python -m ruff check --no-cache app tests alembic
-..\.venv\Scripts\python -m mypy app
+..\.venv\Scripts\python -m mypy --no-incremental app
 ..\.venv\Scripts\python -m pytest -p no:cacheprovider
-```
-
-Migration gates use a fresh temporary database and a representative earlier revision:
-
-```powershell
-$env:DATABASE_URL = "sqlite+aiosqlite:///C:/path/to/temporary.sqlite"
 ..\.venv\Scripts\python -m alembic upgrade head
 ..\.venv\Scripts\python -m alembic check
+..\.venv\Scripts\python -m pip_audit -r requirements.lock
+..\.venv\Scripts\python -m pip_audit -r requirements-dev.lock
+..\.venv\Scripts\python -m bandit -q -r app
 ```
 
-Frontend and browser gates:
+Frontend gates:
 
 ```powershell
 Set-Location frontend
+npm ci
 npm run lint
+npx tsc --noEmit
 npm test
 npm run build
-npm run e2e
+npm audit --omit=dev
+npm audit
 ```
 
-The Playwright matrix uses one worker, desktop Edge/Chromium first, then a Pixel 7 profile. It uses
-real loopback backend, worker, frontend, and demo processes. Axe rules are not disabled. Browser
-artifacts are retained only on failure and excluded from release packaging.
+Playwright uses one worker and exercises desktop then Pixel 7 layouts against real loopback API,
+worker, SPA, and demo processes. The release journey includes setup, target policy, encrypted
+profiles, safe/unsafe cURL handling, comparison, cancellation, findings, all report formats, audit,
+logout/relogin, administrator provisioning, mandatory password replacement, old-password rejection,
+and axe scans. CI uses bundled Chromium; supported local Windows runs use Edge.
 
-Run counts and exact results belong in `FINAL_VALIDATION.md`; this document intentionally does not
-claim a command passed merely because it is configured.
+Security regression coverage includes rendered/encoded/multiply encoded traversal, malformed path
+escapes, redirect scope escape, pre-persistence redaction, all-format report redaction, malformed HAR,
+SQLite foreign-key enforcement, CSRF, SSRF, and cross-owner isolation.
+
+Statement and branch coverage tools/thresholds are not configured. Axe results and responsive tests
+are useful automated checks, not a claim of accessibility compliance; keyboard-only navigation is
+not currently automated.

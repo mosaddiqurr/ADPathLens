@@ -23,6 +23,7 @@ from app.models import (
     TestCaseVariable,
     TestSession,
 )
+from app.parsers.request_import import RequestImportError, validate_outbound_path
 from app.replay.normalization import NormalizedResponse, normalize_response
 from app.security.crypto import KeyRing, SecretEncryptionError
 from app.security.ssrf import (
@@ -197,6 +198,31 @@ async def _allowlist_rules(db: AsyncSession, target_id: str) -> list[AllowlistRu
     return [AllowlistRule(item.entry_type, item.value, item.allowed_port) for item in entries]
 
 
+def _validate_outbound_scope(
+    target: Target,
+    destination_url: str,
+    *,
+    method: str,
+    approved_state_change: bool,
+) -> None:
+    try:
+        destination = normalize_url(destination_url)
+        _, canonical_path = validate_outbound_path(destination.path)
+        validate_request_policy(
+            target,
+            method=method,
+            path=canonical_path,
+            approved_state_change=approved_state_change,
+            require_active=True,
+        )
+    except RequestImportError as exc:
+        raise ReplayError(exc.code, exc.detail) from exc
+    except DestinationPolicyError as exc:
+        raise ReplayError(exc.code, exc.detail) from exc
+    except ApiProblem as exc:
+        raise ReplayError(exc.code, str(exc.detail)) from exc
+
+
 async def _validated_addresses(
     db: AsyncSession,
     target: Target,
@@ -250,8 +276,15 @@ async def _stream_once(
     method: str,
     headers: list[tuple[str, str]],
     body: str,
+    approved_state_change: bool,
     settings: Settings,
 ) -> StreamedResponse:
+    _validate_outbound_scope(
+        target,
+        current_url,
+        method=method,
+        approved_state_change=approved_state_change,
+    )
     addresses = await _validated_addresses(db, target, current_url)
     selected_ip = addresses[0]
     destination = normalize_url(current_url)
@@ -312,6 +345,7 @@ async def execute_request(
     session: TestSession,
     scope: str,
     settings: Settings,
+    redaction_keys: list[str] | None = None,
 ) -> ReplayResult:
     await db.refresh(target)
     try:
@@ -337,7 +371,22 @@ async def execute_request(
             "The selected session profile does not belong to this project and target.",
         )
     variables = await _load_variables(db, test_case, scope, settings)
-    path = render_template(request_definition.path, variables)
+    rendered_path = render_template(request_definition.path, variables)
+    try:
+        path, canonical_path = validate_outbound_path(rendered_path)
+        validate_request_policy(
+            target,
+            method=request_definition.method,
+            path=canonical_path,
+            approved_state_change=(
+                request_definition.approved_state_change and test_case.approved_state_change
+            ),
+            require_active=True,
+        )
+    except RequestImportError as exc:
+        raise ReplayError(exc.code, exc.detail) from exc
+    except ApiProblem as exc:
+        raise ReplayError(exc.code, str(exc.detail)) from exc
     query = [
         (render_template(name, variables), render_template(value, variables))
         for name, value in request_definition.query_parameters
@@ -389,6 +438,10 @@ async def execute_request(
                         method=method,
                         headers=headers,
                         body=body,
+                        approved_state_change=(
+                            request_definition.approved_state_change
+                            and test_case.approved_state_change
+                        ),
                         settings=settings,
                     )
                     break
@@ -417,6 +470,7 @@ async def execute_request(
                     content_type=content_type,
                     max_excerpt_bytes=settings.max_report_excerpt_bytes,
                     expected_markers=request_definition.expected_markers,
+                    redaction_keys=redaction_keys,
                 )
                 return ReplayResult(
                     status_code=status,
@@ -432,20 +486,16 @@ async def execute_request(
                     "redirect_limit", "The response exceeded the target redirect policy."
                 )
             next_url = urljoin(current_url, location)
-            next_destination = normalize_url(next_url)
             await db.refresh(target)
-            try:
-                validate_request_policy(
-                    target,
-                    method=method,
-                    path=next_destination.path,
-                    approved_state_change=(
-                        request_definition.approved_state_change and test_case.approved_state_change
-                    ),
-                    require_active=True,
-                )
-            except ApiProblem as exc:
-                raise ReplayError(exc.code, str(exc.detail)) from exc
+            _validate_outbound_scope(
+                target,
+                next_url,
+                method=method,
+                approved_state_change=(
+                    request_definition.approved_state_change and test_case.approved_state_change
+                ),
+            )
+            next_destination = normalize_url(next_url)
             if status == 303:
                 if method not in {"GET", "HEAD"}:
                     raise ReplayError(

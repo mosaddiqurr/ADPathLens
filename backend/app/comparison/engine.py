@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from difflib import SequenceMatcher, unified_diff
 from typing import Any
 
 from app.models import Observation
 
-ENGINE_VERSION = "authzdiff-rules/1.0"
+ENGINE_VERSION = "authzdiff-rules/1.1"
 SENSITIVE_KEYS = {
     "email",
     "phone",
@@ -60,6 +61,62 @@ def _flatten(value: Any, path: str = "$") -> dict[str, Any]:
     return result
 
 
+def _normalized_pattern(pattern: str) -> str:
+    value = pattern.strip()
+    if not value:
+        return ""
+    return value if value.startswith("$") else f"$.{value.lstrip('.')}"
+
+
+def _path_is_ignored(path: str, patterns: list[str]) -> bool:
+    normalized = [_normalized_pattern(pattern) for pattern in patterns]
+    return any(
+        pattern
+        and (path == pattern or path.startswith(f"{pattern}.") or path.startswith(f"{pattern}["))
+        for pattern in normalized
+    )
+
+
+def _normalize_unordered(value: Any, patterns: list[str], path: str = "$") -> Any:
+    if isinstance(value, dict):
+        return {
+            key: _normalize_unordered(item, patterns, f"{path}.{key}")
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        items = [
+            _normalize_unordered(item, patterns, f"{path}[{index}]")
+            for index, item in enumerate(value[:100])
+        ]
+        if _normalized_pattern(path) in {
+            _normalized_pattern(pattern) for pattern in patterns if pattern.strip()
+        }:
+            return sorted(
+                items,
+                key=lambda item: json.dumps(item, sort_keys=True, ensure_ascii=False),
+            )
+        return items
+    return value
+
+
+def _filtered_headers(headers: list[list[str]], ignored_headers: list[str]) -> dict[str, list[str]]:
+    ignored = {name.strip().lower() for name in ignored_headers if name.strip()}
+    result: dict[str, list[str]] = {}
+    for name, value in headers:
+        lowered = name.lower()
+        if lowered not in ignored:
+            result.setdefault(lowered, []).append(value)
+    return {name: sorted(values) for name, values in sorted(result.items())}
+
+
+def _filtered_text(value: str, patterns: list[str]) -> str:
+    result = value
+    for pattern in patterns:
+        if pattern:
+            result = result.replace(pattern, "[IGNORED]")
+    return result
+
+
 def compare_observations(
     high: Observation,
     low: Observation,
@@ -68,20 +125,64 @@ def compare_observations(
     is_state_changing: bool,
     high_is_anonymous: bool = False,
     low_is_anonymous: bool = False,
+    ignored_json_paths: list[str] | None = None,
+    unordered_json_paths: list[str] | None = None,
+    ignored_headers: list[str] | None = None,
+    ignored_text_patterns: list[str] | None = None,
 ) -> ComparisonDecision:
-    high_text = high.sanitized_excerpt or ""
-    low_text = low.sanitized_excerpt or ""
+    ignored_json_paths = ignored_json_paths or []
+    unordered_json_paths = unordered_json_paths or []
+    ignored_headers = ignored_headers or []
+    ignored_text_patterns = ignored_text_patterns or []
+    high_text = _filtered_text(high.sanitized_excerpt or "", ignored_text_patterns)
+    low_text = _filtered_text(low.sanitized_excerpt or "", ignored_text_patterns)
     similarity = SequenceMatcher(None, high_text, low_text).ratio()
     high_success = high.status_code is not None and 200 <= high.status_code < 300
     low_success = low.status_code is not None and 200 <= low.status_code < 300
-    high_fields = _flatten(high.structural_representation)
-    low_fields = _flatten(low.structural_representation)
+    high_fields = {
+        path: value
+        for path, value in _flatten(
+            _normalize_unordered(high.structural_representation, unordered_json_paths)
+        ).items()
+        if not _path_is_ignored(path, ignored_json_paths)
+    }
+    low_fields = {
+        path: value
+        for path, value in _flatten(
+            _normalize_unordered(low.structural_representation, unordered_json_paths)
+        ).items()
+        if not _path_is_ignored(path, ignored_json_paths)
+    }
     shared_paths = sorted(set(high_fields) & set(low_fields))
+    json_value_difference = [
+        {"path": path, "high": high_fields[path], "low": low_fields[path]}
+        for path in shared_paths
+        if high_fields[path] != low_fields[path]
+    ][:200]
+    high_headers = _filtered_headers(high.safe_headers or [], ignored_headers)
+    low_headers = _filtered_headers(low.safe_headers or [], ignored_headers)
+    shared_headers = sorted(set(high_headers) & set(low_headers))
+    header_difference = {
+        "only_high": sorted(set(high_headers) - set(low_headers)),
+        "only_low": sorted(set(low_headers) - set(high_headers)),
+        "changed": {
+            name: {"high": high_headers[name], "low": low_headers[name]}
+            for name in shared_headers
+            if high_headers[name] != low_headers[name]
+        },
+    }
     sensitive_overlap = sorted(
         path for path in shared_paths if path.rsplit(".", 1)[-1].lower() in SENSITIVE_KEYS
     )
     differences = {
         "status": {"high": high.status_code, "low": low.status_code},
+        "redirect": {
+            "high": high.redirect_outcome or "unknown",
+            "low": low.redirect_outcome or "unknown",
+            "different": (high.redirect_outcome or "unknown")
+            != (low.redirect_outcome or "unknown"),
+        },
+        "headers": header_difference,
         "content_type": {"high": high.content_type, "low": low.content_type},
         "response_length": {
             "high": high.response_length,
@@ -91,6 +192,7 @@ def compare_observations(
         "body_similarity": round(similarity, 4),
         "structure_only_high": sorted(set(high_fields) - set(low_fields))[:200],
         "structure_only_low": sorted(set(low_fields) - set(high_fields))[:200],
+        "json_value_difference": json_value_difference,
         "sensitive_field_overlap": sensitive_overlap,
         "text_diff": "\n".join(
             list(

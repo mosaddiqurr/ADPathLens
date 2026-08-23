@@ -203,5 +203,62 @@ test.describe("AuthZDiff release journey", () => {
     await page.getByRole("button", { name: "Sign in" }).click();
     await page.getByRole("link", { name: "Dashboard" }).click();
     await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
+
+    const forcedEmail = `forced.${String(Date.now())}@example.com`;
+    const temporaryPassword = "temporary analyst password";
+    const permanentPassword = "permanent analyst password";
+    const provisioned = await page.evaluate(
+      async ({ forcedEmail, temporaryPassword }) => {
+        const csrfResponse = await fetch("/api/v1/auth/csrf", { credentials: "include" });
+        const csrf = (await csrfResponse.json()) as { csrf_token: string };
+        const createResponse = await fetch("/api/v1/users", {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRF-Token": csrf.csrf_token,
+          },
+          body: JSON.stringify({
+            email: forcedEmail,
+            display_name: "Forced Password Analyst",
+            initial_password: temporaryPassword,
+            role: "analyst",
+          }),
+        });
+        const logoutResponse = await fetch("/api/v1/auth/logout", {
+          method: "POST",
+          credentials: "include",
+          headers: { "X-CSRF-Token": csrf.csrf_token },
+        });
+        return { createStatus: createResponse.status, logoutStatus: logoutResponse.status };
+      },
+      { forcedEmail, temporaryPassword },
+    );
+    expect(provisioned).toEqual({ createStatus: 201, logoutStatus: 204 });
+    await page.reload();
+    await page.getByLabel("Email address").fill(forcedEmail);
+    await page.getByLabel("Password").fill(temporaryPassword);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await expect(
+      page.getByRole("heading", { name: "Replace your temporary password" }),
+    ).toBeVisible();
+    await expectNoAxeViolations(page);
+    await page.locator('input[name="current_password"]').fill(temporaryPassword);
+    await page.locator('input[name="new_password"]').fill(permanentPassword);
+    await page.locator('input[name="confirmation"]').fill("mismatched analyst password");
+    await page.getByRole("button", { name: "Change password and continue" }).click();
+    await expect(page.getByRole("alert")).toContainText(/must match/i);
+    await page.locator('input[name="confirmation"]').fill(permanentPassword);
+    await page.getByRole("button", { name: "Change password and continue" }).click();
+    await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
+
+    await page.getByRole("button", { name: "Sign out" }).click();
+    await page.getByLabel("Email address").fill(forcedEmail);
+    await page.getByLabel("Password").fill(temporaryPassword);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await expect(page.getByRole("alert")).toContainText(/email or password/i);
+    await page.getByLabel("Password").fill(permanentPassword);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
   });
 });

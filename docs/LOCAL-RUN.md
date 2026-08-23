@@ -2,8 +2,6 @@
 
 ## Windows
 
-Install locked dependencies, then use the owned-process launcher:
-
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python -m pip install -r backend\requirements-dev.lock
@@ -16,23 +14,23 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\runtime.ps1 seed
 ```
 
 Commands are `start`, `status`, `health`, `stop`, `restart`, `migrate`, `seed`, and `reset`.
-Defaults are API `8020`, SPA `4174`, and demo `8021`. The launcher checks ports before starting,
-records PID plus process start time, rejects duplicate starts, ignores stale records, writes
-separate stdout/stderr logs, polls readiness, and stops only matching owned processes.
+Defaults are API `8020`, SPA `4174`, and demo `8021`. The launcher verifies ports, records PID plus
+process start time, rejects duplicate starts, ignores stale records, separates logs, polls readiness,
+and stops only matching owned processes.
 
-Local secrets, SQLite data, reports, logs, and PID records live under
-`%LOCALAPPDATA%\AuthZDiff` unless `AUTHZDIFF_RUNTIME_DIR` overrides it. They persist through
-restart and are not source artifacts.
+Local secrets, SQLite data, reports, logs, and PID records live beneath `%LOCALAPPDATA%\AuthZDiff`
+unless `AUTHZDIFF_RUNTIME_DIR` overrides it. They persist through restart and must never be committed.
 
 ## Unix
 
-`scripts/runtime.sh` provides the same command names and stores state beneath
-`$XDG_STATE_HOME/authzdiff` or `~/.local/state/authzdiff`. Docker Compose is the preferred
-production-like Unix workflow.
+`scripts/runtime.sh` provides the same commands and stores state beneath
+`$XDG_STATE_HOME/authzdiff` or `~/.local/state/authzdiff`. The Python/Node/SQLite runtime is the
+validated Unix-compatible path used by CI browser acceptance. Docker Compose remains an unverified
+candidate topology; see `DEPLOYMENT.md`.
 
 ## Manual services
 
-Set the variables in `.env.example`, migrate from `backend`, then run:
+Set protected values based on `.env.example`, migrate from `backend`, and run:
 
 ```text
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8020

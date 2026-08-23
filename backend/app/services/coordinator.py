@@ -22,6 +22,7 @@ from app.models import (
     FindingStatusHistory,
     ImportedRequest,
     Observation,
+    ProjectPolicy,
     Target,
     TestCase,
     TestSession,
@@ -165,6 +166,20 @@ class RunCoordinator:
                     job_id, "run_dependency_missing", "A run dependency no longer exists."
                 )
                 return
+            project_policy = (
+                await db.execute(
+                    select(ProjectPolicy).where(ProjectPolicy.project_id == test_case.project_id)
+                )
+            ).scalar_one_or_none()
+            redaction_keys = project_policy.redaction_keys if project_policy else []
+            ignored_headers = sorted(
+                set(test_case.ignored_headers)
+                | set(project_policy.ignored_headers if project_policy else [])
+            )
+            ignored_text_patterns = sorted(
+                set(test_case.ignored_text_patterns)
+                | set(project_policy.ignored_text_patterns if project_policy else [])
+            )
             job.status = "running"
             job.worker_id = worker_id
             job.claimed_at = job.claimed_at or datetime.now(UTC)
@@ -204,6 +219,7 @@ class RunCoordinator:
                             session=session,
                             scope=scope,
                             settings=settings,
+                            redaction_keys=redaction_keys,
                         ),
                         timeout=target.per_run_timeout_seconds,
                     )
@@ -277,6 +293,10 @@ class RunCoordinator:
                 is_state_changing=request_definition.is_state_changing,
                 high_is_anonymous=high_session.is_anonymous,
                 low_is_anonymous=low_session.is_anonymous,
+                ignored_json_paths=test_case.ignored_json_paths,
+                unordered_json_paths=test_case.unordered_json_paths,
+                ignored_headers=ignored_headers,
+                ignored_text_patterns=ignored_text_patterns,
             )
             run.status = "completed"
             run.completed_at = datetime.now(UTC)
@@ -289,15 +309,15 @@ class RunCoordinator:
                 DiffResult(
                     comparison_run_id=run.id,
                     status_code_difference=decision.differences["status"],
-                    redirect_difference={"high": "normalized", "low": "normalized"},
-                    header_difference={},
+                    redirect_difference=decision.differences["redirect"],
+                    header_difference=decision.differences["headers"],
                     body_size_difference=decision.differences["response_length"]["delta"],
                     body_similarity=decision.differences["body_similarity"],
                     json_structural_difference=[
                         {"only_high": decision.differences["structure_only_high"]},
                         {"only_low": decision.differences["structure_only_low"]},
                     ],
-                    json_value_difference=[],
+                    json_value_difference=decision.differences["json_value_difference"],
                     text_difference=decision.differences["text_diff"],
                     sensitive_field_overlap=decision.differences["sensitive_field_overlap"],
                     decision_signals={
@@ -357,7 +377,10 @@ class RunCoordinator:
                         reviewer_notes="",
                         priority="normal",
                         tags=["automated-candidate"],
-                        redaction_summary="Reusable authentication material was removed.",
+                        redaction_summary=(
+                            "Reusable authentication material and configured sensitive fields "
+                            "were redacted before persistence."
+                        ),
                         limitations=" ".join(decision.limitations),
                         created_by=run.initiated_by,
                         first_seen_at=now,
