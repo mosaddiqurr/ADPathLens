@@ -28,7 +28,7 @@ jobs:
       - run: ruff format --check --no-cache app tests
       - run: ruff check --no-cache app tests
       - run: mypy --no-incremental app
-      - run: pytest -p no:cacheprovider -q
+      - run: python -m pytest -p no:cacheprovider -q
       - run: bandit -q -r app
       - run: pip-audit -r requirements-dev.lock
       - run: python ../scripts/verify-publication.py

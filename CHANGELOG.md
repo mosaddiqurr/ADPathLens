@@ -23,6 +23,7 @@ First stable release of the stateless Before/After authorization comparison appl
 - Windows and Linux launchers, reproducible dependency locks, and container configuration.
 - Synthetic examples, screenshots, and guides for inputs, comparison, security, and deployment.
 - Backend, frontend, browser, accessibility, and publication checks in GitHub Actions.
+- Backend CI invokes tests through Python so application imports resolve in a clean checkout.
 - Updated the transitive `source-map-js` dependency to 1.2.2 to address
   [GHSA-68fv-2mgg-jv7q](https://github.com/advisories/GHSA-68fv-2mgg-jv7q).
 
