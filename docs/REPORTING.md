@@ -1,19 +1,19 @@
-# Reporting and retention
+# Reporting
 
-Project reports are generated as JSON, CSV, HTML, or PDF from project-owned targets and non-deleted
-findings. They include target-policy summaries, finding classifications, confidence, remediation,
-limitations, timestamps, and redaction statements. Raw observation bodies and profile credentials
-are not report inputs.
+Export the current comparison from Compare. Reports use the same inputs and comparison engine;
+visible filters never discard evidence from an export. There are no saved report jobs, history,
+report IDs, or report files on the server.
 
-JSON receives a canonical content hash. CSV formula-leading values are neutralized. HTML and PDF
-escape untrusted text. Server-generated UUID filenames are resolved beneath the configured private
-report root. The download route rechecks project ownership, root containment, completion, file
-existence, content type, and filename, then records an audit event.
+- PDF: concise summary, prioritized risky changes, ordinary access gains/losses, recommendations,
+  Before/After source states, capture-entry references where available, technical notes, and limitations.
+  It includes at most the first 100 changes in risk order and explicitly states any truncation.
+  Risky gain/loss entries appear once under Risky Changes; the summary still counts their direction.
+- JSON: all changes, counts, versioned normalized model, source summaries, redacted evidence, and UTC generation time.
+- CSV: all changes as a flat table, with spreadsheet formula protection.
 
-Response redaction happens before observations and finding evidence are stored, not only while a
-report is displayed. Reports therefore inherit already-sanitized finding content.
+All exports are generated in memory. Download filenames are fixed, not derived from upload paths.
+Technical evidence is sanitized before reporting; raw request credentials and bodies are excluded.
+Review before sharing: private resource labels and business data may remain.
 
-Report files are retained on local storage. Soft project deletion hides a project from normal API/UI
-workflows but does not remove child database rows, observations, evidence, audit history, or report
-files. Operators must define and execute their own approved database/report retention and purge
-procedure; AuthZDiff does not claim automatic or cryptographic deletion.
+PDF uses ReportLab's bundled Vera font. Complex scripts/right-to-left shaping are not guaranteed;
+JSON preserves full Unicode evidence. PDF size is limited through its change cap, not silent evidence loss.

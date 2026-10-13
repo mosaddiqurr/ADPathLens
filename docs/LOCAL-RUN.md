@@ -1,42 +1,29 @@
 # Local run
 
-## Windows
+Python 3.12+ and Node.js 22.13+ (22.x) or 24+ are required.
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\python -m pip install -r backend\requirements-dev.lock
-Set-Location frontend
-npm ci
-Set-Location ..
-$env:AUTHZDIFF_ADMIN_PASSWORD = "a local password with 12+ characters"
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\runtime.ps1 start
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\runtime.ps1 seed
-```
+Windows: create .venv, install backend/requirements-dev.lock, run npm ci inside frontend,
+then powershell -NoProfile -ExecutionPolicy Bypass -File scripts/runtime.ps1 start.
+Open http://localhost:4174. Commands: start, stop, restart, status, health.
+The launcher starts API and Vite only and stops only processes matching its recorded PID/start time.
+Operational logs/PID records live in ignored var/runtime. They contain no uploaded datasets.
+There is no password, setup token, seeding, encryption key, or database migration.
 
-Commands are `start`, `status`, `health`, `stop`, `restart`, `migrate`, `seed`, and `reset`.
-Defaults are API `8020`, SPA `4174`, and demo `8021`. The launcher verifies ports, records PID plus
-process start time, rejects duplicate starts, ignores stale records, separates logs, polls readiness,
-and stops only matching owned processes.
+Linux/macOS can use the two-terminal commands in the README.
+The runtime.sh convenience launcher targets Linux and checks /proc ownership; it is not a macOS launcher.
 
-Local secrets, SQLite data, reports, logs, and PID records live beneath `%LOCALAPPDATA%\AuthZDiff`
-unless `AUTHZDIFF_RUNTIME_DIR` overrides it. They persist through restart and must never be committed.
+Build frontend with npm run build; npm run preview serves the build on 4174 with the same local API proxy.
+Vite development/preview is for local use, not a hardened public web server.
 
-## Unix
+Optional .env settings: ALLOWED_HOSTS, ALLOWED_FRONTEND_ORIGINS, MAX_BODY_BYTES.
+Ports are 8020 (API) and 4174 (frontend). Keep explicit origin/host values; wildcards are rejected.
+For separate hosting, build with frontend VITE_API_URL set to your backend origin.
+See [deployment](DEPLOYMENT.md) for exact CORS, static routing, HTTPS, health, and capacity settings.
 
-`scripts/runtime.sh` provides the same commands and stores state beneath
-`$XDG_STATE_HOME/authzdiff` or `~/.local/state/authzdiff`. The Python/Node/SQLite runtime is the
-validated Unix-compatible path used by CI browser acceptance. Docker Compose remains an unverified
-candidate topology; see `DEPLOYMENT.md`.
+docker compose up --build provides a frontend on http://localhost:8080 and an internal-only API.
+There is no DB, worker, demo target, report volume, or upload volume.
+The supplied container configuration has not been runtime-validated by the Windows release checks.
+For any exposed deployment, operators must supply HTTPS/access restrictions and capacity limits.
 
-## Manual services
-
-Set protected values based on `.env.example`, migrate from `backend`, and run:
-
-```text
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8020
-python -m app.worker
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8021   # from demo-target
-npm run dev -- --host 127.0.0.1 --port 4174 --strictPort
-```
-
-Set `VITE_API_PROXY_TARGET=http://127.0.0.1:8020` for the SPA. Never expose the demo target.
+Generated dependencies, caches, runtime files, and reports are ignored and never needed in a
+source publication. Install dependencies using the lock files after a clean checkout.

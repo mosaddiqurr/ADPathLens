@@ -1,163 +1,229 @@
+"""Concise memory-only reports derived from the same comparison result."""
+
 from __future__ import annotations
 
 import csv
-import hashlib
 import html
 import io
 import json
+from datetime import UTC, datetime
 from pathlib import Path
+from threading import Lock
 from typing import Any
 
+import reportlab
 from reportlab.lib import colors
+from reportlab.lib.enums import TA_LEFT
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfgen.canvas import Canvas
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+from app.schemas.comparison import Change, ComparisonResult
+
+FONT_LOCK = Lock()
+PDF_CHANGE_LIMIT = 100
 
 
 def csv_safe(value: object) -> str:
     text = str(value if value is not None else "")
-    if text.startswith(("=", "+", "-", "@", "\t", "\r")):
-        return f"'{text}"
+    if text.lstrip().startswith(("=", "+", "-", "@")) or text.startswith(("\t", "\r", "\n")):
+        return "'" + text
     return text
 
 
-def canonical_payload_hash(payload: dict[str, Any]) -> str:
-    data = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
-    return hashlib.sha256(data).hexdigest()
+def render_json(result: ComparisonResult) -> bytes:
+    payload = {"generated_at": datetime.now(UTC).isoformat(), **result.model_dump()}
+    return json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
 
 
-def render_json(payload: dict[str, Any]) -> bytes:
-    return json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False).encode()
-
-
-def render_csv(payload: dict[str, Any]) -> bytes:
+def render_csv(result: ComparisonResult) -> bytes:
     buffer = io.StringIO(newline="")
     writer = csv.writer(buffer)
-    writer.writerow(
-        [
-            "title",
-            "category",
-            "severity",
-            "confidence",
-            "status",
-            "target",
-            "endpoint",
-            "remediation",
-        ]
-    )
-    for finding in payload["findings"]:
-        writer.writerow(
-            [
-                csv_safe(finding.get("title")),
-                csv_safe(finding.get("category")),
-                csv_safe(finding.get("severity")),
-                csv_safe(finding.get("confidence")),
-                csv_safe(finding.get("status")),
-                csv_safe(finding.get("target")),
-                csv_safe(finding.get("endpoint")),
-                csv_safe(finding.get("remediation")),
-            ]
-        )
+    fields = ["principal", "resource", "action", "before", "after", "change", "severity", "why"]
+    writer.writerow(fields)
+    for change in result.changes:
+        data = change.model_dump()
+        writer.writerow([csv_safe(data[field]) for field in fields])
     return buffer.getvalue().encode("utf-8-sig")
 
 
-def render_html(payload: dict[str, Any]) -> bytes:
-    findings = []
-    for finding in payload["findings"]:
-        findings.append(
-            "<article>"
-            f"<h3>{html.escape(str(finding['title']))}</h3>"
-            f"<p><strong>{html.escape(str(finding['severity']))}</strong> · "
-            f"{html.escape(str(finding['confidence']))} confidence · "
-            f"{html.escape(str(finding['status']))}</p>"
-            f"<p>{html.escape(str(finding['description']))}</p>"
-            f"<h4>Remediation</h4><p>{html.escape(str(finding['remediation']))}</p>"
-            "</article>"
-        )
-    markup = f"""<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>AuthZDiff report</title>
-<style>
-body{{font:15px/1.55 system-ui,sans-serif;max-width:960px;margin:40px auto;color:#172033}}
-h1,h2,h3{{color:#0f172a}} article{{border-top:1px solid #cbd5e1;padding:20px 0}}
-.notice{{background:#fff7ed;border:1px solid #fdba74;padding:12px}}
-code{{font-family:ui-monospace,monospace}}
-</style></head><body>
-<h1>AuthZDiff authorization comparison report</h1>
-<p>Project: {html.escape(str(payload["project"]["name"]))}</p>
-<p>Generated: {html.escape(str(payload["generated_at"]))}</p>
-<p>Canonical evidence hash: <code>{html.escape(str(payload["content_hash"]))}</code></p>
-<p class="notice">Automated differences are review aids and do not independently
-prove exploitability.
-Reusable credentials, cookies and authorization values are excluded.</p>
-<h2>Findings</h2>{"".join(findings) or "<p>No findings were selected.</p>"}
-<h2>Redaction summary</h2><p>{html.escape(str(payload["redaction_summary"]))}</p>
-<h2>Limitations</h2><p>{html.escape(str(payload["limitations"]))}</p>
-</body></html>"""
-    return markup.encode()
+def _font() -> str:
+    with FONT_LOCK:
+        if "AuthZDiff" not in pdfmetrics.getRegisteredFontNames():
+            font_path = Path(reportlab.__file__).parent / "fonts" / "Vera.ttf"
+            pdfmetrics.registerFont(TTFont("AuthZDiff", str(font_path)))
+    return "AuthZDiff"
 
 
-def render_pdf(payload: dict[str, Any], destination: Path) -> None:
+def _escape(value: str) -> str:
+    return html.escape(value.replace("→", " -> ").replace("—", "-"), quote=True)
+
+
+def render_pdf(result: ComparisonResult) -> bytes:
+    buffer = io.BytesIO()
+    font = _font()
     styles = getSampleStyleSheet()
+    styles.add(
+        ParagraphStyle(
+            name="ReportTitle",
+            fontName=font,
+            fontSize=22,
+            leading=28,
+            textColor=colors.HexColor("#142247"),
+            spaceAfter=5 * mm,
+        )
+    )
+    styles.add(
+        ParagraphStyle(
+            name="ReportSection",
+            fontName=font,
+            fontSize=11,
+            leading=16,
+            textColor=colors.HexColor("#2455b7"),
+            spaceBefore=5 * mm,
+            spaceAfter=2 * mm,
+            keepWithNext=True,
+        )
+    )
+    styles.add(
+        ParagraphStyle(
+            name="ReportBody",
+            fontName=font,
+            fontSize=9,
+            leading=14,
+            spaceAfter=2 * mm,
+            splitLongWords=True,
+            alignment=TA_LEFT,
+        )
+    )
+    styles.add(
+        ParagraphStyle(
+            name="ReportSmall",
+            fontName=font,
+            fontSize=8,
+            leading=12,
+            textColor=colors.HexColor("#526079"),
+            spaceAfter=2 * mm,
+        )
+    )
     document = SimpleDocTemplate(
-        str(destination),
+        buffer,
         pagesize=A4,
-        rightMargin=18 * mm,
-        leftMargin=18 * mm,
-        topMargin=18 * mm,
-        bottomMargin=18 * mm,
-        title="AuthZDiff authorization comparison report",
+        rightMargin=19 * mm,
+        leftMargin=19 * mm,
+        topMargin=20 * mm,
+        bottomMargin=20 * mm,
+        title="AuthZDiff authorization change report",
+        author="AuthZDiff",
     )
-    story = [
-        Paragraph("AuthZDiff authorization comparison report", styles["Title"]),
-        Spacer(1, 6 * mm),
-        Paragraph(f"Project: {html.escape(str(payload['project']['name']))}", styles["Normal"]),
-        Paragraph(f"Generated: {html.escape(str(payload['generated_at']))}", styles["Normal"]),
+    story: list[Any] = [
+        Paragraph("AUTHZDIFF", styles["ReportSection"]),
+        Paragraph("Authorization change report", styles["ReportTitle"]),
         Paragraph(
-            "Automated differences are review aids and do not independently prove exploitability. "
-            "Reusable credentials are excluded.",
-            styles["BodyText"],
+            f"{_escape(result.before.filename)} -> {_escape(result.after.filename)}",
+            styles["ReportBody"],
         ),
-        Spacer(1, 5 * mm),
-        Paragraph("Finding summary", styles["Heading2"]),
+        Paragraph(
+            datetime.now(UTC).strftime("Generated %Y-%m-%d %H:%M UTC"), styles["ReportSmall"]
+        ),
     ]
-    rows = [["Title", "Severity", "Confidence", "Status"]]
-    rows.extend(
+    summary = result.summary
+    table = Table(
         [
-            finding["title"],
-            finding["severity"],
-            finding["confidence"],
-            finding["status"],
-        ]
-        for finding in payload["findings"]
+            ["Total changes", "Gained", "Lost", "Risky"],
+            [str(summary.total), str(summary.gained), str(summary.lost), str(summary.risky)],
+        ],
+        colWidths=[43 * mm] * 4,
     )
-    table = Table(rows, colWidths=[90 * mm, 25 * mm, 25 * mm, 25 * mm], repeatRows=1)
     table.setStyle(
         TableStyle(
             [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#172033")),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("FONTNAME", (0, 0), (-1, -1), font),
+                ("FONTSIZE", (0, 0), (-1, 0), 8),
+                ("FONTSIZE", (0, 1), (-1, 1), 16),
+                ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor("#142247")),
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f0f3f9")),
+                ("TOPPADDING", (0, 0), (-1, -1), 8),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
             ]
         )
     )
-    story.append(table)
-    for finding in payload["findings"]:
-        story.extend(
-            [
-                PageBreak(),
-                Paragraph(html.escape(str(finding["title"])), styles["Heading1"]),
-                Paragraph(
-                    f"{html.escape(str(finding['severity']))} · "
-                    f"{html.escape(str(finding['confidence']))} confidence",
-                    styles["BodyText"],
-                ),
-                Paragraph("Description", styles["Heading2"]),
-                Paragraph(html.escape(str(finding["description"])), styles["BodyText"]),
-                Paragraph("Remediation", styles["Heading2"]),
-                Paragraph(html.escape(str(finding["remediation"])), styles["BodyText"]),
-            ]
+    story.extend([Spacer(1, 3 * mm), table])
+    story.append(Paragraph("Risky changes overlap gained/lost totals.", styles["ReportSmall"]))
+    if summary.review:
+        story.append(
+            Paragraph(f"{summary.review} changes need contextual review.", styles["ReportSmall"])
         )
-    document.build(story)
+    selected = result.changes[:PDF_CHANGE_LIMIT]
+    if len(selected) < summary.total:
+        story.append(
+            Paragraph(
+                f"Showing the first {PDF_CHANGE_LIMIT} of {summary.total} changes, "
+                "prioritized by risk. "
+                "Export JSON for all changes and technical evidence.",
+                styles["ReportSmall"],
+            )
+        )
+    groups = [
+        ("RISKY CHANGES", [c for c in selected if c.severity != "info"]),
+        ("ACCESS GAINED", [c for c in selected if c.change == "gained" and c.severity == "info"]),
+        ("ACCESS LOST", [c for c in selected if c.change == "lost" and c.severity == "info"]),
+        (
+            "OTHER CHANGES / REVIEW",
+            [c for c in selected if c.change == "changed" and c.severity == "info"],
+        ),
+    ]
+    if not selected:
+        story.append(
+            Paragraph(
+                "No authorization changes found in the comparable evidence.", styles["ReportBody"]
+            )
+        )
+    for heading, changes in groups:
+        if not changes:
+            continue
+        story.append(Paragraph(heading, styles["ReportSection"]))
+        for change in changes:
+            story.extend(_change_paragraphs(change, styles))
+    story.append(Paragraph("TECHNICAL NOTES", styles["ReportSection"]))
+    for note in [*result.notes, "Technical evidence is included in the JSON report."]:
+        story.append(Paragraph(_escape(note), styles["ReportSmall"]))
+    story.append(Paragraph("LIMITATIONS", styles["ReportSection"]))
+    for limitation in result.limitations:
+        story.append(Paragraph(_escape(limitation), styles["ReportSmall"]))
+
+    def footer(canvas: Canvas, _document: SimpleDocTemplate) -> None:
+        canvas.saveState()
+        canvas.setFont(font, 8)
+        canvas.setFillColor(colors.HexColor("#526079"))
+        canvas.drawString(19 * mm, 12 * mm, "AuthZDiff | Authorization change report")
+        canvas.drawRightString(191 * mm, 12 * mm, str(canvas.getPageNumber()))
+        canvas.restoreState()
+
+    document.build(story, onFirstPage=footer, onLaterPages=footer)
+    return buffer.getvalue()
+
+
+def _change_paragraphs(change: Change, styles: Any) -> list[Any]:
+    label = change.severity.upper() if change.severity != "info" else change.change.upper()
+    evidence = f"Before: {change.before} | After: {change.after} | Action: {change.action}"
+    if "response_difference" in change.evidence:
+        references = []
+        for side in ("before", "after"):
+            item = change.evidence.get(side)
+            if item:
+                references.append(
+                    f"{side.capitalize()} capture entry {item['entry']}: HTTP {item['status']}"
+                )
+        evidence += ". " + "; ".join(references)
+    return [
+        Paragraph(_escape(f"{label} · {change.summary}"), styles["ReportBody"]),
+        Paragraph(_escape("Evidence - " + evidence), styles["ReportSmall"]),
+        Paragraph(_escape(change.why), styles["ReportSmall"]),
+        Paragraph(_escape("Recommendation: " + change.recommendation), styles["ReportSmall"]),
+        Spacer(1, 2 * mm),
+    ]

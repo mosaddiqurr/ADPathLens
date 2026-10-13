@@ -1,37 +1,9 @@
 services:
-  db:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: authzdiff
-      POSTGRES_USER: authzdiff
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U authzdiff -d authzdiff"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    networks: [internal]
-
   backend:
     build: ./backend
-    env_file: .env
     environment:
-      DATABASE_URL: postgresql+psycopg://authzdiff:${POSTGRES_PASSWORD}@db:5432/authzdiff
-      REPORT_STORAGE_PATH: /reports
-      ALLOWED_FRONTEND_ORIGINS: http://localhost:8080
+      ALLOWED_FRONTEND_ORIGINS: http://localhost:8080,http://127.0.0.1:8080
       ALLOWED_HOSTS: localhost,127.0.0.1,backend
-      REPLAY_EXECUTION_MODE: external
-    command: >
-      sh -c "alembic upgrade head &&
-             uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
-             --proxy-headers --forwarded-allow-ips=frontend"
-    volumes:
-      - report-data:/reports
-    depends_on:
-      db:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/ready')"]
       interval: 10s
@@ -41,60 +13,17 @@ services:
     security_opt: ["no-new-privileges:true"]
     cap_drop: ["ALL"]
 
-  worker:
-    build: ./backend
-    env_file: .env
-    environment:
-      DATABASE_URL: postgresql+psycopg://authzdiff:${POSTGRES_PASSWORD}@db:5432/authzdiff
-      REPORT_STORAGE_PATH: /reports
-      REPLAY_EXECUTION_MODE: external
-      ALLOWED_FRONTEND_ORIGINS: http://localhost:8080
-      ALLOWED_HOSTS: localhost,127.0.0.1,backend
-    command: ["python", "-m", "app.worker"]
-    volumes:
-      - report-data:/reports
-    depends_on:
-      db:
-        condition: service_healthy
-      backend:
-        condition: service_healthy
-    restart: unless-stopped
-    networks: [internal]
-    security_opt: ["no-new-privileges:true"]
-    cap_drop: ["ALL"]
-
   frontend:
     build:
       context: .
       dockerfile: frontend/Dockerfile
-    ports:
-      - "127.0.0.1:8080:8080"
+    ports: ["127.0.0.1:8080:8080"]
     depends_on:
       backend:
         condition: service_healthy
     networks: [internal]
     security_opt: ["no-new-privileges:true"]
     cap_drop: ["ALL"]
-
-  demo-target:
-    build: ./demo-target
-    environment:
-      APP_ENV: development
-      DEMO_MODE: "true"
-      DEMO_RESET_TOKEN: ${DEMO_RESET_TOKEN:?Set DEMO_RESET_TOKEN}
-    expose: ["8001"]
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/ready')"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    networks: [internal]
-    security_opt: ["no-new-privileges:true"]
-    cap_drop: ["ALL"]
-
-volumes:
-  postgres-data:
-  report-data:
 
 networks:
   internal:

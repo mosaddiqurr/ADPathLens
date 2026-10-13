@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from difflib import SequenceMatcher, unified_diff
 from typing import Any
 
-from app.models import Observation
+from app.comparison.observations import Observation
 
 ENGINE_VERSION = "authzdiff-rules/1.1"
 SENSITIVE_KEYS = {

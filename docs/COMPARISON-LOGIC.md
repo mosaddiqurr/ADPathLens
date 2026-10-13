@@ -1,33 +1,47 @@
 # Comparison logic
 
-The deterministic engine version is `authzdiff-rules/1.1`. It compares bounded, normalized HTTP
-responses; it does not use an AI model, emit vulnerability probabilities, or evaluate authorization
-policy semantics.
+## Explicit snapshots
 
-The engine records actual status, redirect outcome, safe response-header differences, response
-length, content type, normalized JSON structure, redacted JSON value differences, bounded text
-differences, denial/challenge/existence markers, sensitive-field path overlap, and binary hashes.
-It never presents placeholder redirect, header, or JSON-value evidence.
+Match the exact (principal, resource, action) tuple. Labels are case-sensitive except public
+aliases and recognized role names. Reject duplicate tuples instead of resolving conflicting rules.
 
-Test-case configuration is applied as follows:
+- New allow or deny -> allow: gained.
+- Allow -> absent/deny: lost.
+- Recognized role increase/decrease on an existing allow: gained/lost.
+- Removed deny with no new allow: review, medium priority; never an inferred gain.
+- Other role changes: review. A new admin label remains high priority even with an unknown prior hierarchy.
+- Identical effect/role: unchanged. Sensitivity-only metadata changes are not authorization changes.
 
-- ignored JSON paths are removed from structural/value comparison;
-- explicitly unordered JSON arrays are canonicalized before comparison;
-- ignored safe response headers are removed from header comparison;
-- ignored text patterns are literal bounded-text replacements, not regular expressions;
-- project-level volatile headers/text settings combine with the test-case settings.
+Recognized role tiers are Viewer/Reader/Read-only < Developer/Editor < Admin/Administrator/Owner.
+This is a documented label convention, not universal application-policy semantics.
 
-Expected higher-profile success plus lower-profile 401/403 is treated as an expected access
-control. Similar successful responses contrary to denial, ownership, tenant, method, authentication,
-or sensitive-field expectations may create a vertical, horizontal/IDOR, tenant-scope,
-method-inconsistency, existence-leak, or exposure review candidate. Anonymous comparisons are
-identified separately.
+Public gain is high, or critical with sensitive/admin/wildcard context. New admin or wildcard
+grants are high. Explicit sensitive-resource gains and non-admin role increases are medium.
+Replacing a deny with an allow is high. Ordinary gains/losses are Info.
+Sensitivity on either side is retained for risk assessment. Wildcards are detected literally;
+their effective coverage is not evaluated.
+New grants of actions named Admin, Administrator, Manage, or FullAccess are high priority.
+The final component of a dotted, colon, or slash-separated action name is checked exactly;
+unrelated names such as `not-admin` do not match. An already allowed management action does
+not become new admin access merely because its role label moves up a non-admin tier.
 
-This is heuristic black-box response comparison. It does not parse principals, users, groups,
-nested groups, roles, resources, actions, wildcards, inherited permissions, explicit deny rules, or
-equivalent IAM/RBAC policies. It cannot explain a policy-state change because no policy-state model
-is ingested.
+## Captures
 
-Transport failures and truncated evidence produce failed or inconclusive results. Confidence is
-`low`, `medium`, or `high`; it is deterministic labeling rather than a statistical probability.
-Every candidate includes limitations and alternative explanations and requires human review.
+Match principal + exact origin/encoded path + method + non-credential query/header context +
+exact request-body/form context, including content type. Paths are validated for traversal and
+invalid encodings, but distinct encoded targets are not collapsed into the same resource.
+Queries, headers, and request bodies contribute to internal matching but never appear in reports.
+Credentials, cookies, and request headers are excluded from retained evidence.
+
+Keep the existing safe-header, redirect, JSON structure/value, and redacted text difference logic.
+The internal authzdiff-rules/1.1 API remains database-independent and tested.
+The temporal adapter uses it for evidence, not to mistake higher/lower profiles for Before/After.
+
+A confirmed observed gain/loss requires the same annotated principal and request context,
+explicit allowed/denied annotations, corroboration from the response, and complete evidence.
+A success containing denial markers cannot corroborate allowed. Failed/truncated responses,
+missing body evidence, status-only changes, and unmatched coverage remain review items.
+
+A record present in only one capture is not proof of gained/lost access.
+Repeated matching requests inside a capture are rejected instead of arbitrarily pairing them.
+No timestamps, response latency, or dropped credential values are used to infer access.

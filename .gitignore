@@ -20,12 +20,7 @@ frontend/playwright-report/
 frontend/test-results/
 frontend/*.d.ts
 frontend/*.tsbuildinfo
-var/reports/*
-!var/reports/.gitkeep
-var/runtime/
-var/release/
-var/performance-validation/
-var/pytest-*/
+var/
 release/
 *.sqlite
 *.sqlite3
@@ -45,3 +40,8 @@ coverage/
 *.pid.lock
 .idea/
 .vscode/
+
+.hypothesis/
+backend/.hypothesis/
+output/pdf/
+tmp/pdfs/

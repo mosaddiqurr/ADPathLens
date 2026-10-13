@@ -1,31 +1,22 @@
 # Architecture
 
-AuthZDiff is a single-workspace black-box HTTP authorization testing application with independently
-runnable API, replay worker, SPA, database, report storage, and synthetic demo-target processes.
+AuthZDiff has one current-comparison workflow.
 
-```mermaid
-flowchart LR
-  Browser["React SPA"] --> API["FastAPI API"]
-  API --> DB[("SQLite; PostgreSQL configured")]
-  API --> Reports["Private report storage"]
-  Worker["Replay worker"] --> DB
-  Worker --> Policy["Origin + canonical path + DNS policy"]
-  Policy --> Transport["Pinned-IP HTTP transport"]
-  Transport --> Target["Explicitly authorized target"]
-  Demo["Synthetic demo target"] -. "controlled loopback policy" .-> Transport
-```
+- React/TypeScript owns only the current Before/After inputs, validation summaries, and result.
+- FastAPI accepts bounded JSON requests at /api/v1/inspect, /compare, and /reports/{pdf|json|csv}.
+- app/parsers/states.py recognizes explicit access snapshots and HAR captures.
+- app/comparison/states.py produces the common change/risk model.
+- app/comparison/engine.py and normalization.py preserve the established response reasoning and redaction.
+- app/reporting/generator.py produces memory-only exports from the same deterministic result.
 
-The browser never contacts a tested target. API mutations require an authenticated opaque session
-and CSRF token. A run reserves database concurrency leases and two target-budget slots, then an
-external worker atomically claims the job, records identity/heartbeat, executes the higher profile
-before the lower profile, normalizes/redacts each response before persistence, and compares only
-after both observations exist.
+No DB, ORM, migration, queue, worker, account, organization, project, or history remains in
+the active source. Captured requests are never executed. No uploaded data is sent to external services.
 
-The local and clean-source acceptance runtime uses SQLite and an external worker. PostgreSQL support
-exists in drivers, settings, migrations, and Compose configuration but remains runtime-unverified.
-SQLite connections explicitly enable foreign-key enforcement and remain limited by single-writer
-behavior.
+Inputs are re-sent to this instance's backend for validation, comparison, and export.
+The browser keeps its state in React memory, without localStorage, IndexedDB, cookies, or server identifiers.
+Clearing or reloading discards the current UI state. HTTP responses use Cache-Control: no-store.
+This is memory-only processing, not a claim of cryptographic erasure from process memory or OS swap.
 
-Reports are generated server-side beneath a configured private root. Database rows store safe names,
-ownership, state, canonical content hashes, and final-file hashes. Downloads always recheck project
-ownership and the resolved storage path.
+Bounded request bodies are checked before JSON parsing. Two computations can run per process;
+excess computations fail safely with 429. The local launcher starts only API and frontend.
+Docker exposes the frontend on loopback and keeps the API on its internal network.

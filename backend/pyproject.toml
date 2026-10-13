@@ -4,41 +4,30 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "authzdiff"
-version = "1.0.0rc1"
-description = "Authorized role-based access-control response comparison platform"
+version = "1.0.0"
+description = "Compare authorization snapshots and HAR captures with explainable risk and evidence exports"
 requires-python = ">=3.12"
 dependencies = [
-  "aiosqlite==0.21.0",
-  "alembic==1.16.5",
-  "argon2-cffi==25.1.0",
   "beautifulsoup4==4.13.5",
-  "cryptography==50.0.0",
-  "email-validator==2.2.0",
   "fastapi==0.141.1",
-  "httpx==0.28.1",
-  "idna==3.18",
-  "jinja2==3.1.6",
-  "psycopg[binary]==3.2.9",
   "pydantic==2.11.7",
   "pydantic-settings==2.10.1",
-  "python-multipart==0.0.32",
   "reportlab==4.4.3",
-  "sqlalchemy==2.0.43",
   "starlette==1.3.1",
-  "structlog==25.4.0",
-  "uvicorn[standard]==0.35.0",
+  "uvicorn==0.35.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-  "hypothesis==6.138.13",
-  "bandit==1.9.4",
-  "mypy==1.17.1",
-  "pip-audit==2.9.0",
-  "pytest==9.0.3",
-  "pytest-asyncio==1.4.0",
-  "ruff==0.12.10",
+  "bandit==1.9.4", "hypothesis==6.138.13", "httpx==0.28.1",
+  "mypy==1.17.1", "pip-audit==2.9.0", "pytest==9.0.3",
+  "pytest-asyncio==1.4.0", "ruff==0.12.10",
 ]
+
+[project.urls]
+Repository = "https://github.com/mosaddiqurr/ADPathLens"
+Documentation = "https://github.com/mosaddiqurr/ADPathLens#readme"
+Issues = "https://github.com/mosaddiqurr/ADPathLens/issues"
 
 [tool.setuptools.packages.find]
 include = ["app*"]
@@ -55,15 +44,10 @@ line-length = 100
 select = ["E", "F", "I", "B", "UP", "S", "ASYNC"]
 ignore = ["B008", "S101"]
 
-[tool.ruff.lint.per-file-ignores]
-"app/core/config.py" = ["S105"]
-"alembic/versions/*.py" = ["E501"]
-
 [tool.mypy]
 python_version = "3.12"
 strict = true
 plugins = ["pydantic.mypy"]
-exclude = ["alembic"]
 
 [[tool.mypy.overrides]]
 module = ["reportlab.*"]

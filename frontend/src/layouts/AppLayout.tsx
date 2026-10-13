@@ -1,44 +1,21 @@
-import { LogOut, ShieldCheck } from "lucide-react";
+import { ArrowLeftRight, Home, Info } from "lucide-react";
 import { NavLink, Outlet } from "react-router-dom";
+import logo from "../../../assets/logo-authzdiff.png";
 
-import type { User } from "../types";
-import { Button } from "../components/Ui";
-
-export function AppLayout({
-  user,
-  onLogout,
-}: {
-  user: User;
-  onLogout: () => Promise<void>;
-}) {
-  return (
-    <div className="app-shell">
-      <a className="skip-link" href="#main-content">
-        Skip to main content
-      </a>
-      <header className="topbar">
-        <NavLink className="brand" to="/">
-          <ShieldCheck aria-hidden="true" />
-          <span>
-            <strong>AuthZDiff</strong>
-            <small>Authorization comparison</small>
-          </span>
-        </NavLink>
-        <nav aria-label="Primary navigation">
-          <NavLink to="/">Dashboard</NavLink>
-          {user.role === "administrator" && <NavLink to="/audit">Audit</NavLink>}
-        </nav>
-        <div className="account">
-          <span>
-            <strong>{user.display_name}</strong>
-            <small>{user.role}</small>
-          </span>
-          <Button variant="secondary" onClick={() => void onLogout()} aria-label="Sign out">
-            <LogOut aria-hidden="true" size={16} /> Sign out
-          </Button>
-        </div>
-      </header>
-      <Outlet />
-    </div>
-  );
+export function AppLayout() {
+  return <div className="app-shell">
+    <a className="skip-link" href="#main-content">Skip to main content</a>
+    <aside className="sidebar">
+      <NavLink className="brand" to="/" aria-label="AuthZDiff home">
+        <img src={logo} alt="" /><span>AuthZDiff<small>Authorization comparison</small></span>
+      </NavLink>
+      <nav aria-label="Primary navigation">
+        <NavLink end to="/"><Home size={17} aria-hidden="true" />Home</NavLink>
+        <NavLink to="/compare"><ArrowLeftRight size={17} aria-hidden="true" />Compare</NavLink>
+        <NavLink to="/about"><Info size={17} aria-hidden="true" />About</NavLink>
+      </nav>
+      <div className="sidebar-footer"><span>Before + After</span><small>Understand access changes.</small></div>
+    </aside>
+    <div className="main-area"><Outlet /></div>
+  </div>;
 }

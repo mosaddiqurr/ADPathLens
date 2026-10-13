@@ -1,7 +1,0 @@
-.pytest_cache
-.ruff_cache
-tests
-fixtures
-*.log
-__pycache__
-**/__pycache__

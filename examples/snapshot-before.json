@@ -1,0 +1,10 @@
+{
+  "schema": "authzdiff/snapshot-v1",
+  "records": [
+    {"principal": "Alice", "resource": "Billing", "action": "Manage", "effect": "allow", "role": "Viewer"},
+    {"principal": "Bob", "resource": "Reports", "action": "Export", "effect": "allow"},
+    {"principal": "Carol", "resource": "Billing", "action": "Read", "effect": "allow", "role": "Viewer"},
+    {"principal": "Public", "resource": "/reports/*", "action": "Read", "effect": "deny", "sensitive": true},
+    {"principal": "Developer", "resource": "Jobs", "action": "Delete", "effect": "deny"}
+  ]
+}

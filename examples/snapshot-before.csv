@@ -1,0 +1,6 @@
+principal,resource,action,effect,role,sensitive
+Alice,Billing,Manage,allow,Viewer,false
+Bob,Reports,Export,allow,,false
+Carol,Billing,Read,allow,Viewer,false
+Public,/reports/*,Read,deny,,true
+Developer,Jobs,Delete,deny,,false
