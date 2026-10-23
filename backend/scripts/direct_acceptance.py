@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+from sqlalchemy import URL
 
 BACKEND = Path(__file__).resolve().parents[1]
 FRONTEND = BACKEND.parent / "frontend"
@@ -114,7 +115,9 @@ def main() -> None:
             **os.environ,
             "APP_ENV": "production",
             "APP_SECRET_KEY": secrets.token_urlsafe(48),
-            "DATABASE_URL": f"sqlite+aiosqlite:///{database.as_posix()}",
+            "DATABASE_URL": URL.create("sqlite+aiosqlite", database=database.as_posix()).render_as_string(
+                hide_password=False
+            ),
             "REPORT_STORAGE_PATH": str(root / "reports"),
             "LOCAL_MODE": "false",
             "DEMO_MODE": "false",

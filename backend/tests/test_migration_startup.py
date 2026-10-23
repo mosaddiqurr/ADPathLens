@@ -4,10 +4,13 @@ import subprocess
 import sys
 from pathlib import Path
 
+from sqlalchemy import URL
+
 
 def test_real_migrations_persist_schema_with_percent_in_database_url(tmp_path: Path) -> None:
     database = tmp_path / "directory%20snapshot.db"
-    environment = {**os.environ, "DATABASE_URL": f"sqlite+aiosqlite:///{database.as_posix()}"}
+    database_url = URL.create("sqlite+aiosqlite", database=database.as_posix()).render_as_string(hide_password=False)
+    environment = {**os.environ, "DATABASE_URL": database_url}
     subprocess.run(
         [sys.executable, "-m", "alembic", "upgrade", "head"],
         cwd=Path(__file__).resolve().parents[1],
@@ -25,7 +28,8 @@ def test_real_migrations_persist_schema_with_percent_in_database_url(tmp_path: P
 
 def test_repeated_migration_preserves_data(tmp_path: Path) -> None:
     database = tmp_path / "repeat.db"
-    environment = {**os.environ, "DATABASE_URL": f"sqlite+aiosqlite:///{database.as_posix()}"}
+    database_url = URL.create("sqlite+aiosqlite", database=database.as_posix()).render_as_string(hide_password=False)
+    environment = {**os.environ, "DATABASE_URL": database_url}
     for _ in range(2):
         subprocess.run(
             [sys.executable, "-m", "alembic", "upgrade", "head"],
