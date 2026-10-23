@@ -8,6 +8,8 @@ from typing import Any
 
 import networkx as nx
 
+from app.graph.catalog import RELATIONSHIP_CATALOG
+
 
 @dataclass(frozen=True)
 class PathResult:
@@ -36,7 +38,7 @@ def find_paths(
     maximum_expansions: int = 100_000,
     reverse: bool = False,
 ) -> tuple[list[PathResult], bool]:
-    if start not in graph:
+    if start not in graph or (not include_disabled and not graph.nodes[start].get("enabled", True)):
         return [], False
     confidence_rank = {"unknown": 0, "low": 1, "medium": 2, "high": 3}
     minimum_rank = confidence_rank[minimum_confidence]
@@ -70,10 +72,13 @@ def find_paths(
             )
         )
         for target, _, data in outgoing:
+            if expansions >= maximum_expansions or time.monotonic() - started > deadline_seconds:
+                truncated = True
+                break
             expansions += 1
             if target in nodes or not data["active"] or not data["path_eligible"]:
                 continue
-            if relationship_types and data["type"] not in relationship_types:
+            if relationship_types is not None and data["type"] not in relationship_types:
                 continue
             if confidence_rank[data["confidence"]] < minimum_rank:
                 continue
@@ -92,6 +97,10 @@ def find_paths(
                 queue,
                 (next_priority, next_hops, next_nodes, next_edges, next_cost, confidence),
             )
+        if truncated:
+            break
+    if queue and len(results) >= maximum_paths and algorithm == "top_paths":
+        truncated = True
     results.sort(key=lambda path: (path.total_weight, len(path.edges), path.nodes, path.edges))
     if algorithm == "shortest_hops":
         results.sort(key=lambda path: (len(path.edges), path.total_weight, path.nodes, path.edges))
@@ -109,10 +118,11 @@ def explain_path(
         data = matching[0]
         source_name = graph.nodes[source]["display_name"]
         target_name = graph.nodes[target]["display_name"]
+        definition = RELATIONSHIP_CATALOG.get(data["type"])
         explanation = (
-            f"{source_name} has {data['type']} to {target_name}. "
-            "This security-relevant relationship may contribute to a possible control path "
-            "and requires validation."
+            definition.explanation.format(source=source_name, target=target_name)
+            if definition
+            else f"{source_name} has {data['type']} to {target_name}. Validate this modeled relationship."
         )
         steps.append(
             {

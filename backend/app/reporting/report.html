@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>{{ title }}</title>
+<style>
+body{font-family:Arial,sans-serif;margin:0;color:#152238;background:#f5f7fa;line-height:1.65;font-size:14px}
+header{background:#07172d;color:white;padding:24px 40px;display:flex;align-items:center;gap:12px}
+header img{width:38px;height:38px}header strong{font-size:20px}.report{max-width:960px;margin:auto;padding:36px}
+h1{font-size:28px;margin:0 0 8px}h2{font-size:20px;margin:28px 0 12px}h3{font-size:15px}.meta{color:#5e6b7d;font-size:12px}
+.summary{display:flex;flex-wrap:wrap;gap:36px;background:#fff;border:1px solid #dee5ec;border-left:3px solid #24a6c0;padding:24px;margin:24px 0}
+.summary strong{display:block;font-size:22px}.finding,.path{border-bottom:1px solid #dee5ec;padding:18px 0}.severity{text-transform:capitalize;color:#a16a1d;font-weight:bold}
+.route{color:#116cca;font-weight:bold}.fixes li{padding:8px 0}.warning{color:#5e6b7d;font-size:12px;border-top:1px solid #dee5ec;padding-top:18px}
+details{margin-top:24px}dt{font-weight:bold}dd{overflow-wrap:anywhere}pre{white-space:pre-wrap;font-size:11px}
+@media(max-width:600px){header{padding:20px}.report{padding:20px}h1{font-size:24px}.summary{gap:18px}}
+@media print{body{background:white}.report{padding:12mm}header{padding:12mm}.finding,.path{break-inside:avoid}details{display:none}}
+</style></head><body><header><img src="{{ logo }}" alt="ADPathLens logo"><strong>ADPathLens</strong></header>
+<main class="report"><p class="meta">Directory exposure report · {{ generated_at }}</p><h1>{{ project.name }}</h1>
+<p>Understand the relationships that lead to critical assets, and the actions worth reviewing first.</p>
+<div class="summary"><div>Exposure<strong>{{ exposure }}</strong></div><div>Attack paths<strong>{{ source.get('path_count', 0) }}</strong></div><div>Findings<strong>{{ findings|length }}</strong></div></div>
+<h2>Important attack paths</h2><p class="meta">{{ source.get('path_scope', 'Selected report data') }}</p>
+{% for path in source.get('important_paths', []) %}<section class="path"><p class="route">{{ path.source }} → {{ path.target }}</p><p>{{ path.explanation }}</p><p class="meta">{{ path.confidence }} confidence · {{ path.relationships|length }} relationships</p><ol>{% for step in path.relationships %}<li>{{ step.source_name }} → {{ step.relationship_type }} → {{ step.target_name }}</li>{% endfor %}</ol></section>{% else %}<p>{{ 'No eligible paths were identified within this analysis.' if source.get('analysis_available') else 'No path analysis was available for this report.' }}</p>{% endfor %}
+<h2>Priority fixes</h2><ol class="fixes">{% for fix in source.get('priority_fixes', []) %}<li><strong>{{ fix.title }}</strong><p>{{ fix.action }}</p><span class="meta">Affects {{ fix.affected_paths }} returned paths. Validate before changing the directory.</span></li>{% else %}<li>No path-based recommendations available. Review the finding actions below.</li>{% endfor %}</ol>
+<h2>Findings</h2>{% for finding in findings %}<section class="finding"><h3>{{ finding.title }}</h3><p class="severity">{{ finding.severity }} · {{ finding.confidence }} confidence</p><p>{{ finding.description }}</p><h3>Impact</h3><p>{{ finding.impact }}</p><h3>Recommended action</h3><p>{{ finding.remediation }}</p></section>{% else %}<p>No findings matched this report source.</p>{% endfor %}
+{% if source.get('metrics') %}<h2>Changes</h2><dl>{% for key,value in source.metrics.items() %}<dt>{{ key|replace('_',' ')|title }}</dt><dd>{{ value }}</dd>{% endfor %}</dl>{% endif %}
+<h2>Methodology and limitations</h2><p>ADPathLens analyzes imported, authorized directory relationships using bounded traversal and deterministic risk rules. Confidence reflects imported evidence; priority reflects modeled relationship strength and path length.</p><p class="warning">A possible path is not evidence of compromise. Human review is required. Simulations do not change Active Directory. Removing a relationship may leave alternative routes; retest using fresh directory data.</p>
+<details><summary>Technical provenance</summary><dl>{% for key,value in source.items() if key not in ['important_paths','priority_fixes'] %}<dt>{{ key|replace('_',' ')|title }}</dt><dd>{{ value }}</dd>{% endfor %}</dl></details>
+</main></body></html>

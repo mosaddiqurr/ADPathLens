@@ -1,15 +1,34 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark" data-motion="full">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Defensive Active Directory attack-path lab visualizer" />
+    <script>
+      try {
+        const root = document.documentElement;
+        root.dataset.theme =
+          localStorage.getItem("adpathlens.theme") === "light"
+            ? "light"
+            : "dark";
+        root.dataset.motion =
+          localStorage.getItem("adpathlens.reduce-motion") === "true"
+            ? "reduced"
+            : "full";
+      } catch {
+        /* Defaults also work when browser storage is unavailable. */
+      }
+    </script>
+    <meta
+      name="description"
+      content="Understand directory exposure, inspect attack paths, and prioritize fixes with ADPathLens."
+    />
+    <link rel="icon" type="image/png" href="/logo.png" />
+    <link rel="apple-touch-icon" href="/logo.png" />
+    <meta name="theme-color" content="#101114" />
     <title>ADPathLens</title>
   </head>
   <body>
-    <a class="skip-link" href="#main-content">Skip to content</a>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

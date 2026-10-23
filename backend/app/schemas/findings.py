@@ -31,6 +31,10 @@ class FindingResponse(BaseModel):
     validation_steps: list[str]
     limitations: str
     reviewer_notes: str
+    stable_fingerprint: str
+    first_seen_at: datetime
+    last_seen_at: datetime
+    recurrence_count: int
     created_by: str
     reviewed_by: str | None
     reviewed_at: datetime | None
@@ -60,7 +64,7 @@ class FindingUpdate(BaseModel):
         default=None,
         pattern=(
             "^(draft|open|confirmed|acknowledged|mitigated|accepted_risk|false_positive|"
-            "planned_remediation|resolved|retest_required|closed)$"
+            "triaged|in_progress|reopened|planned_remediation|resolved|retest_required|closed)$"
         ),
     )
     priority: str | None = Field(default=None, pattern="^(low|medium|high|urgent)$")

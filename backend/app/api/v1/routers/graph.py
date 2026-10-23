@@ -135,6 +135,9 @@ async def list_nodes(
     search: str = "",
     node_type: str = "",
     high_value: bool | None = None,
+    privileged: bool | None = None,
+    enabled: bool | None = None,
+    domain: str = "",
 ) -> PageResponse:
     await snapshot_or_404(db, user, snapshot_id)
     conditions = [DirectoryNode.snapshot_id == snapshot_id]
@@ -152,6 +155,12 @@ async def list_nodes(
         conditions.append(DirectoryNode.node_type == node_type)
     if high_value is not None:
         conditions.append(DirectoryNode.high_value == high_value)
+    if privileged is not None:
+        conditions.append(DirectoryNode.privileged == privileged)
+    if enabled is not None:
+        conditions.append(DirectoryNode.enabled == enabled)
+    if domain:
+        conditions.append(DirectoryNode.domain_name == domain[:256])
     total = await db.scalar(select(func.count(DirectoryNode.id)).where(*conditions)) or 0
     items = list(
         (
@@ -181,6 +190,8 @@ async def list_relationships(
     page_size: Annotated[int, Query(ge=1, le=100)] = 50,
     relationship_type: str = "",
     confidence: str = "",
+    active: bool | None = None,
+    inherited: bool | None = None,
 ) -> PageResponse:
     await snapshot_or_404(db, user, snapshot_id)
     conditions = [DirectoryRelationship.snapshot_id == snapshot_id]
@@ -188,6 +199,10 @@ async def list_relationships(
         conditions.append(DirectoryRelationship.relationship_type == relationship_type)
     if confidence:
         conditions.append(DirectoryRelationship.confidence == confidence)
+    if active is not None:
+        conditions.append(DirectoryRelationship.active == active)
+    if inherited is not None:
+        conditions.append(DirectoryRelationship.inherited == inherited)
     total = await db.scalar(select(func.count(DirectoryRelationship.id)).where(*conditions)) or 0
     items = list(
         (
@@ -215,6 +230,27 @@ async def get_node(node_id: str, db: DB, user: CurrentUser) -> DirectoryNode:
         raise AppError(404, "Node not found", "The node does not exist.", code="not_found")
     await snapshot_or_404(db, user, node.snapshot_id)
     return node
+
+
+@router.get("/nodes/{node_id}/neighborhood")
+async def node_neighborhood(
+    node_id: str,
+    db: DB,
+    user: CurrentUser,
+    depth: Annotated[int, Query(ge=1, le=3)] = 1,
+    maximum_nodes: Annotated[int, Query(ge=1, le=500)] = 200,
+    maximum_relationships: Annotated[int, Query(ge=1, le=1500)] = 600,
+) -> dict[str, Any]:
+    node = await get_node(node_id, db, user)
+    return await graph_elements(
+        snapshot_id=node.snapshot_id,
+        db=db,
+        user=user,
+        focus_node_id=node.id,
+        depth=depth,
+        maximum_nodes=maximum_nodes,
+        maximum_relationships=maximum_relationships,
+    )
 
 
 @router.patch("/nodes/{node_id}", response_model=NodeResponse)

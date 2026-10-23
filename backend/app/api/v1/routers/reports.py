@@ -4,15 +4,28 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse
-from sqlalchemy import select
+from sqlalchemy import case, func, select
 
 from app.api.deps import DB, CurrentUser, EditorCsrf
+from app.api.v1.routers.analysis import _analysis_response
 from app.audit.service import record_audit
 from app.core.config import get_settings
 from app.core.errors import AppError
-from app.models.entities import Report, RiskFinding, SnapshotComparison, User
+from app.models.entities import (
+    Dataset,
+    DirectoryNode,
+    DirectoryRelationship,
+    PathAnalysis,
+    PrivilegePath,
+    RemediationPlan,
+    Report,
+    RiskFinding,
+    SnapshotComparison,
+    User,
+)
 from app.reporting.service import generate_report
 from app.schemas.reports import ReportCreate, ReportResponse
+from app.scoring.path_priority import path_severity
 from app.services.authorization import project_or_404, snapshot_or_404
 
 router = APIRouter(tags=["reports"])
@@ -96,13 +109,56 @@ async def create_report(
             "snapshot_id": snapshot.id,
             "snapshot_name": snapshot.name,
             "snapshot_version": snapshot.version,
+            "snapshot_type": snapshot.snapshot_type,
+            "generated_from_dataset_id": snapshot.dataset_id,
         }
+        analysis_snapshot_id = snapshot.id
+        dataset = await db.get(Dataset, snapshot.dataset_id) if snapshot.dataset_id else None
+        source.update(
+            {
+                "import_source_type": dataset.source_type if dataset else "derived",
+                "imported_at": dataset.created_at.isoformat() if dataset else None,
+                "imported_by": dataset.created_by if dataset else None,
+                "node_count": int(
+                    await db.scalar(
+                        select(func.count(DirectoryNode.id)).where(DirectoryNode.snapshot_id == snapshot.id)
+                    )
+                    or 0
+                ),
+                "relationship_count": int(
+                    await db.scalar(
+                        select(func.count(DirectoryRelationship.id)).where(
+                            DirectoryRelationship.snapshot_id == snapshot.id
+                        )
+                    )
+                    or 0
+                ),
+                "path_count": int(
+                    await db.scalar(
+                        select(func.count(PrivilegePath.id))
+                        .join(PathAnalysis, PathAnalysis.id == PrivilegePath.path_analysis_id)
+                        .where(PathAnalysis.snapshot_id == snapshot.id)
+                    )
+                    or 0
+                ),
+                "remediation_plan_count": int(
+                    await db.scalar(
+                        select(func.count(RemediationPlan.id)).where(RemediationPlan.source_snapshot_id == snapshot.id)
+                    )
+                    or 0
+                ),
+            }
+        )
         findings = list(
             (
                 await db.scalars(
                     select(RiskFinding)
                     .where(RiskFinding.snapshot_id == snapshot.id)
-                    .order_by(RiskFinding.severity.desc(), RiskFinding.title)
+                    .order_by(
+                        case({"critical": 0, "high": 1, "medium": 2, "low": 3}, value=RiskFinding.severity, else_=4),
+                        RiskFinding.internal_score.desc(),
+                        RiskFinding.title,
+                    )
                 )
             ).all()
         )
@@ -126,11 +182,65 @@ async def create_report(
                 "relationships_removed": comparison.relationships_removed,
                 "risk_score_before": comparison.risk_score_before,
                 "risk_score_after": comparison.risk_score_after,
+                "findings_added": comparison.findings_added,
+                "findings_resolved": comparison.findings_resolved,
+                "findings_reopened": comparison.findings_reopened,
+                "severity_changes": comparison.severity_changes,
+                "remediation_outcomes": comparison.remediation_outcomes,
             },
         }
+        analysis_snapshot_id = comparison.after_snapshot_id
         findings = list(
             (await db.scalars(select(RiskFinding).where(RiskFinding.snapshot_id == comparison.after_snapshot_id))).all()
         )
+
+    latest = await db.scalar(
+        select(PathAnalysis)
+        .where(PathAnalysis.snapshot_id == analysis_snapshot_id, PathAnalysis.status == "complete")
+        .order_by(PathAnalysis.completed_at.desc(), PathAnalysis.id.desc())
+        .limit(1)
+    )
+    if payload.analysis_id:
+        latest = await db.get(PathAnalysis, payload.analysis_id)
+        if not latest or latest.snapshot_id != analysis_snapshot_id or latest.status != "complete":
+            raise AppError(422, "Analysis mismatch", "Select a completed analysis from this snapshot.", code="scope")
+    paths = (await _analysis_response(db, latest)).paths if latest else []
+    source["path_count"] = len(paths)
+    source["analysis_available"] = latest is not None
+    source["path_scope"] = (
+        "Selected completed analysis; bounded traversal of imported relationships."
+        if payload.analysis_id
+        else "Most recent completed analysis; bounded traversal of imported relationships."
+    )
+    source["analysis_id"] = latest.id if latest else None
+    source["analysis_parameters"] = latest.request_json if latest else {}
+    source["analysis_truncated"] = bool(latest and latest.request_json.get("truncated"))
+    source["report_type"] = payload.report_type
+    source["important_paths"] = [
+        {
+            "source": path.steps[0].source_name,
+            "target": path.steps[-1].target_name,
+            "risk_score": path.risk_score,
+            "severity": path_severity(path.risk_score),
+            "confidence": path.confidence,
+            "relationships": [step.model_dump() for step in path.steps],
+            "explanation": path.explanation,
+            "limitations": path.limitations,
+        }
+        for path in sorted(paths, key=lambda path: -path.risk_score)
+        if path.steps
+    ]
+    grouped: dict[str, dict[str, Any]] = {}
+    for path in paths:
+        for step in path.steps:
+            if step.relationship_id not in grouped:
+                grouped[step.relationship_id] = {
+                    "title": f"Review {step.source_name} → {step.target_name}",
+                    "action": step.remediation_summary,
+                    "affected_paths": 0,
+                }
+            grouped[step.relationship_id]["affected_paths"] += 1
+    source["priority_fixes"] = sorted(grouped.values(), key=lambda fix: -fix["affected_paths"])
 
     extension = payload.format
     storage_name = f"{uuid4()}.{extension}"
@@ -168,6 +278,7 @@ async def create_report(
         "Sanitized report generated",
         user=user,
         entity_id=report.id,
+        project_id=project.id,
         context={"format": report.format, "size_bytes": size_bytes},
     )
     await db.commit()
@@ -181,7 +292,7 @@ async def get_report(report_id: str, db: DB, user: CurrentUser) -> Report:
 
 
 @router.get("/reports/{report_id}/download", response_class=FileResponse)
-async def download_report(report_id: str, db: DB, user: CurrentUser) -> FileResponse:
+async def download_report(report_id: str, request: Request, db: DB, user: CurrentUser) -> FileResponse:
     report = await _report_or_404(db, user, report_id)
     path = _available_report_path(report.storage_path)
     if path is None:
@@ -191,6 +302,18 @@ async def download_report(report_id: str, db: DB, user: CurrentUser) -> FileResp
             "The generated report file is no longer available.",
             code="file_missing",
         )
+    await record_audit(
+        db,
+        request,
+        "report.downloaded",
+        "report",
+        "Authorized report downloaded",
+        user=user,
+        entity_id=report.id,
+        project_id=report.project_id,
+        context={"format": report.format, "size_bytes": report.size_bytes},
+    )
+    await db.commit()
     return FileResponse(
         path,
         media_type=report.mime_type,

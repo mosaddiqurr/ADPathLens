@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 class ReportCreate(BaseModel):
     snapshot_id: str | None = None
+    analysis_id: str | None = None
     comparison_id: str | None = None
     report_type: str = Field(default="findings", pattern="^(findings|executive|comparison)$")
     format: str = Field(pattern="^(html|pdf|json|csv)$")
@@ -13,6 +14,8 @@ class ReportCreate(BaseModel):
     def validate_source(self) -> "ReportCreate":
         if not self.snapshot_id and not self.comparison_id:
             raise ValueError("snapshot_id or comparison_id is required")
+        if self.analysis_id and not self.snapshot_id:
+            raise ValueError("snapshot_id is required when analysis_id is specified")
         if self.report_type == "comparison" and not self.comparison_id:
             raise ValueError("comparison_id is required for comparison reports")
         return self

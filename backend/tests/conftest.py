@@ -6,9 +6,10 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-TEST_REPORT_DIR = Path(f"C:/tmp/adpathlens-test-reports-{os.getpid()}")
+TEST_REPORT_DIR = Path(__file__).resolve().parent / ".reports" / str(os.getpid())
 
 os.environ["APP_ENV"] = "development"
+os.environ["LOCAL_MODE"] = "false"
 os.environ["APP_SECRET_KEY"] = "test-secret-key-that-is-longer-than-thirty-two-characters"
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
 os.environ["REPORT_STORAGE_PATH"] = str(TEST_REPORT_DIR)
@@ -32,3 +33,5 @@ def client() -> Iterator[TestClient]:
     for report_file in TEST_REPORT_DIR.glob("*"):
         if report_file.is_file():
             report_file.unlink()
+    if TEST_REPORT_DIR.is_dir():
+        TEST_REPORT_DIR.rmdir()

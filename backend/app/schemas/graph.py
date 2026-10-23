@@ -29,6 +29,9 @@ class NodeResponse(BaseModel):
     privileged: bool
     risk_level: str
     metadata_json: dict[str, Any]
+    stable_fingerprint: str
+    first_seen_at: datetime
+    last_seen_at: datetime
 
 
 class RelationshipResponse(BaseModel):
@@ -47,6 +50,9 @@ class RelationshipResponse(BaseModel):
     description: str
     evidence_json: dict[str, Any]
     metadata_json: dict[str, Any]
+    stable_fingerprint: str
+    first_seen_at: datetime
+    last_seen_at: datetime
 
 
 class NodeUpdate(BaseModel):
@@ -77,6 +83,9 @@ class AnalysisRequest(BaseModel):
     maximum_depth: int = Field(default=12, ge=1, le=12)
     maximum_paths: int = Field(default=10, ge=1, le=25)
     relationship_types: list[str] = Field(default_factory=list, max_length=60)
+    excluded_relationship_types: list[str] = Field(default_factory=list, max_length=60)
+    source_node_types: list[str] = Field(default_factory=list, max_length=20)
+    target_node_types: list[str] = Field(default_factory=list, max_length=20)
     minimum_confidence: Literal["unknown", "low", "medium", "high"] = "low"
     include_disabled: bool = False
 
@@ -86,6 +95,9 @@ class AnalysisRequest(BaseModel):
             raise ValueError("target_node_id is required for a specific target")
         if self.algorithm == "reverse_reachability" and not self.target_node_id:
             raise ValueError("target_node_id is required for reverse reachability")
+        overlap = set(self.relationship_types) & set(self.excluded_relationship_types)
+        if overlap:
+            raise ValueError("relationship types cannot be both allowed and excluded")
         return self
 
 
@@ -93,10 +105,12 @@ class PathStepResponse(BaseModel):
     position: int
     source_node_id: str
     source_name: str
+    source_type: str
     relationship_id: str
     relationship_type: str
     target_node_id: str
     target_name: str
+    target_type: str
     step_explanation: str
     remediation_summary: str
     confidence: str
@@ -110,6 +124,8 @@ class PathResponse(BaseModel):
     total_weight: float
     hop_count: int
     risk_score: float
+    severity: str
+    scoring_components: dict[str, Any]
     confidence: str
     explanation: str
     limitations: str
@@ -117,6 +133,7 @@ class PathResponse(BaseModel):
 
 
 class AnalysisResponse(BaseModel):
+    request_parameters: dict[str, Any] = Field(default_factory=dict)
     id: str
     project_id: str
     snapshot_id: str

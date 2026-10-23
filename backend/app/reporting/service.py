@@ -1,3 +1,4 @@
+import base64
 import csv
 import hashlib
 import io
@@ -11,25 +12,10 @@ from jinja2 import BaseLoader, Environment, select_autoescape
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import Image, KeepTogether, Paragraph, SimpleDocTemplate, Spacer
 
-HTML_TEMPLATE = """<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>{{ title }}</title>
-<style>
-body{font-family:system-ui,sans-serif;margin:2rem;color:#14213d} h1{margin-bottom:.2rem}
-.meta{color:#52606d}.finding{border:1px solid #cbd5e1;border-radius:.5rem;padding:1rem;margin:1rem 0}
-.severity{font-weight:700;text-transform:uppercase}.warning{background:#fff7ed;padding:.75rem}
-@media print{body{margin:12mm}.finding{break-inside:avoid}}
-</style></head><body>
-<h1>{{ title }}</h1><p class="meta">Generated {{ generated_at }} · schema {{ schema_version }}</p>
-<p class="warning">Defensive analysis of imported, authorised data. A possible path is not evidence of compromise.</p>
-{% for finding in findings %}<section class="finding">
-<h2>{{ finding.title }}</h2><p class="severity">{{ finding.severity }} · {{ finding.confidence }} confidence</p>
-<p>{{ finding.description }}</p><h3>Impact</h3><p>{{ finding.impact }}</p>
-<h3>Remediation</h3><p>{{ finding.remediation }}</p>
-<h3>Limitations</h3><p>{{ finding.limitations }}</p>
-</section>{% else %}<p>No findings matched this report source.</p>{% endfor %}
-</body></html>"""
+LOGO_PATH = Path(__file__).with_name("logo.png")
+HTML_TEMPLATE = Path(__file__).with_name("report.html").read_text(encoding="utf-8")
 
 
 def safe_csv_cell(value: object) -> str:
@@ -88,6 +74,38 @@ def _csv_bytes(findings: list[dict[str, Any]]) -> bytes:
     return output.getvalue().encode("utf-8-sig")
 
 
+def _exposure(payload: dict[str, object]) -> str:
+    findings = payload.get("findings", [])
+    active = (
+        [
+            item
+            for item in findings
+            if isinstance(item, dict)
+            and item.get("status") not in {"resolved", "closed", "false_positive", "accepted_risk"}
+        ]
+        if isinstance(findings, list)
+        else []
+    )
+    source = payload.get("source", {})
+    paths = source.get("important_paths", []) if isinstance(source, dict) else []
+    for severity in ("critical", "high", "medium", "low", "informational"):
+        if any(f.get("severity") == severity for f in active):
+            return severity.title()
+        if severity == "critical" and any(p.get("risk_score", 0) >= 85 for p in paths):
+            return "Critical"
+        if severity == "high" and any(p.get("risk_score", 0) >= 65 for p in paths):
+            return "High"
+        if severity == "medium" and any(p.get("risk_score", 0) >= 35 for p in paths):
+            return "Medium"
+    return (
+        "Low"
+        if paths
+        else "No significant exposure identified"
+        if isinstance(source, dict) and source.get("analysis_available")
+        else "Not analyzed"
+    )
+
+
 def _html_bytes(payload: dict[str, object]) -> bytes:
     environment = Environment(
         loader=BaseLoader(),
@@ -95,24 +113,45 @@ def _html_bytes(payload: dict[str, object]) -> bytes:
     )
     template = environment.from_string(HTML_TEMPLATE)
     return template.render(
-        title="ADPathLens Defensive Findings Report",
+        title="ADPathLens Directory Exposure Report",
+        project=payload["project"],
+        exposure=_exposure(payload),
+        logo="data:image/png;base64," + base64.b64encode(LOGO_PATH.read_bytes()).decode("ascii"),
         generated_at=payload["generated_at"],
         schema_version=payload["schema_version"],
+        source=payload["source"],
         findings=payload["findings"],
     ).encode("utf-8")
 
 
 def _pdf_bytes(payload: dict[str, object]) -> bytes:
+    project = payload["project"]
+    source = payload["source"]
+    findings = payload["findings"]
+    if not isinstance(project, dict) or not isinstance(source, dict) or not isinstance(findings, list):
+        raise ValueError("Report project, source, and findings must use the canonical structure")
     output = io.BytesIO()
     document = SimpleDocTemplate(
         output,
         pagesize=A4,
-        title="ADPathLens Defensive Findings Report",
+        title="ADPathLens Directory Exposure Report",
         author="ADPathLens",
     )
     styles = getSampleStyleSheet()
+    for key in ("Title", "Heading2", "Heading3"):
+        styles[key].textColor = colors.HexColor("#07172D")
+    styles["Heading3"].keepWithNext = True
+    styles["Heading3"].fontName = "Helvetica-Bold"
+    styles["Heading2"].textColor = colors.HexColor("#116CCA")
+    styles["BodyText"].textColor = colors.HexColor("#152238")
+    styles["BodyText"].leading = 15
+    styles["Normal"].textColor = colors.HexColor("#5E6B7D")
     story: list[Any] = [
-        Paragraph("ADPathLens Defensive Findings Report", styles["Title"]),
+        Image(str(LOGO_PATH), width=38, height=38),
+        Spacer(1, 10),
+        Paragraph("ADPathLens Directory Exposure Report", styles["Title"]),
+        Paragraph(escape(str(project.get("name", "Environment"))), styles["Heading2"]),
+        Paragraph("Exposure: " + escape(_exposure(payload)), styles["Heading3"]),
         Paragraph(escape(str(payload["generated_at"])), styles["Normal"]),
         Spacer(1, 12),
         Paragraph(
@@ -120,43 +159,140 @@ def _pdf_bytes(payload: dict[str, object]) -> bytes:
             styles["Heading3"],
         ),
         Spacer(1, 12),
+        Paragraph("Environment and scope", styles["Heading2"]),
+        Paragraph(escape(str(source.get("snapshot_name", "Compared directory data"))), styles["BodyText"]),
+        Paragraph(
+            f"{source.get('path_count', 0)} attack paths | "
+            f"{len(findings)} findings | "
+            f"{len(source.get('priority_fixes', []))} priority fixes",
+            styles["BodyText"],
+        ),
+        Spacer(1, 12),
     ]
+    source = payload["source"]
+    if isinstance(source, dict):
+        if source.get("analysis_truncated"):
+            story.append(
+                Paragraph(
+                    "Partial results: analysis limits were reached. Additional paths may exist.", styles["BodyText"]
+                )
+            )
+        story.append(Paragraph("Important attack paths", styles["Heading2"]))
+        all_paths = source.get("important_paths", [])
+        visible_paths = all_paths[:5] if source.get("report_type") == "executive" else all_paths
+        if len(visible_paths) < len(all_paths):
+            story.append(
+                Paragraph(
+                    "Showing the five highest-priority paths. JSON includes all returned paths.", styles["Normal"]
+                )
+            )
+        for path in visible_paths:
+            path_story: list[Any] = [
+                Paragraph(escape(f"{path['source']} > {path['target']}"), styles["Heading3"]),
+                Paragraph(escape(path["explanation"]), styles["BodyText"]),
+            ]
+            path_story.append(
+                Paragraph(
+                    escape(
+                        f"{path.get('severity', 'unrated').title()} priority | Score {path['risk_score']:.0f}/100 | "
+                        f"{path['confidence']} confidence"
+                    ),
+                    styles["BodyText"],
+                )
+            )
+            for step in path["relationships"]:
+                path_story.append(
+                    Paragraph(
+                        escape(f"{step['source_name']} > {step['relationship_type']} > {step['target_name']}"),
+                        styles["BodyText"],
+                    )
+                )
+                evidence = json.dumps(step.get("evidence", {}), ensure_ascii=False, sort_keys=True)
+                path_story.append(Paragraph(escape("Evidence: " + evidence[:900]), styles["Normal"]))
+                if len(evidence) > 900:
+                    path_story.append(
+                        Paragraph("Evidence abbreviated in PDF; export JSON for the complete record.", styles["Normal"])
+                    )
+            path_story.append(Spacer(1, 10))
+            story.append(KeepTogether(path_story))
+        story.append(Paragraph("Priority fixes", styles["Heading2"]))
+        for fix in source.get("priority_fixes", [])[: 5 if source.get("report_type") == "executive" else None]:
+            story.append(
+                KeepTogether(
+                    [
+                        Paragraph(escape(fix["title"].replace("→", ">")), styles["Heading3"]),
+                        Paragraph(escape(fix["action"]), styles["BodyText"]),
+                        Paragraph(
+                            f"Affects {fix['affected_paths']} returned paths. Validate before changing the directory.",
+                            styles["BodyText"],
+                        ),
+                        Spacer(1, 8),
+                    ]
+                )
+            )
+        if source.get("metrics"):
+            story.append(Paragraph("Changes", styles["Heading2"]))
+            for key, value in source["metrics"].items():
+                story.append(Paragraph(escape(f"{key.replace('_', ' ')}: {value}"), styles["BodyText"]))
+    story.append(Paragraph("Findings", styles["Heading2"]))
     findings = payload["findings"]
     if isinstance(findings, list):
-        for index, finding in enumerate(findings):
+        selected_findings = (
+            findings[:5] if isinstance(source, dict) and source.get("report_type") == "executive" else findings
+        )
+        if len(selected_findings) < len(findings):
+            story.append(
+                Paragraph(
+                    "Showing five priority findings. Export JSON for the complete evidence record.", styles["Normal"]
+                )
+            )
+        for finding in selected_findings:
             if not isinstance(finding, dict):
                 continue
-            data = [
-                ["Severity", escape(str(finding.get("severity", "")))],
-                ["Confidence", escape(str(finding.get("confidence", "")))],
-                ["Status", escape(str(finding.get("status", "")))],
-            ]
-            story.extend(
-                [
-                    Paragraph(escape(str(finding.get("title", ""))), styles["Heading2"]),
-                    Table(
-                        data,
-                        colWidths=[90, 360],
-                        style=TableStyle(
-                            [
-                                ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#e2e8f0")),
-                                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#94a3b8")),
-                                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                            ]
+            story.append(
+                KeepTogether(
+                    [
+                        Paragraph(escape(str(finding.get("title", ""))), styles["Heading3"]),
+                        Paragraph(
+                            escape(
+                                f"{finding.get('severity', '').title()} priority | "
+                                f"{finding.get('confidence', '')} confidence"
+                            ),
+                            styles["Normal"],
                         ),
-                    ),
-                    Spacer(1, 8),
-                    Paragraph(escape(str(finding.get("description", ""))), styles["BodyText"]),
-                    Paragraph("<b>Impact</b>", styles["BodyText"]),
-                    Paragraph(escape(str(finding.get("impact", ""))), styles["BodyText"]),
-                    Paragraph("<b>Remediation</b>", styles["BodyText"]),
-                    Paragraph(escape(str(finding.get("remediation", ""))), styles["BodyText"]),
-                    Spacer(1, 14),
-                ]
+                        Spacer(1, 6),
+                        Paragraph(escape(str(finding.get("description", ""))), styles["BodyText"]),
+                        Paragraph("<b>Impact:</b> " + escape(str(finding.get("impact", ""))), styles["BodyText"]),
+                        Paragraph(
+                            "<b>Remediation:</b> " + escape(str(finding.get("remediation", ""))), styles["BodyText"]
+                        ),
+                        Spacer(1, 14),
+                    ]
+                )
             )
-            if index and index % 12 == 0:
-                story.append(PageBreak())
-    document.build(story)
+    story.extend(
+        [
+            Paragraph("Methodology and limitations", styles["Heading2"]),
+            Paragraph(
+                "Bounded traversal and deterministic rules prioritize imported relationships for human review. "
+                "Confidence reflects source evidence, not certainty of exploitation. "
+                "Simulations do not change Active Directory. Retest with fresh data after applying changes.",
+                styles["BodyText"],
+            ),
+        ]
+    )
+
+    def footer(canvas: Any, doc: Any) -> None:
+        canvas.saveState()
+        canvas.setStrokeColor(colors.HexColor("#DEE5EC"))
+        canvas.line(doc.leftMargin, 45, A4[0] - doc.rightMargin, 45)
+        canvas.setFont("Helvetica", 8)
+        canvas.setFillColor(colors.HexColor("#5E6B7D"))
+        canvas.drawString(doc.leftMargin, 31, "ADPathLens | Directory exposure")
+        canvas.drawRightString(A4[0] - doc.rightMargin, 31, str(doc.page))
+        canvas.restoreState()
+
+    document.build(story, onFirstPage=footer, onLaterPages=footer)
     return output.getvalue()
 
 

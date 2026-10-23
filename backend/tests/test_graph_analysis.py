@@ -33,6 +33,11 @@ def test_graph_summary_and_explainable_bounded_paths(client: TestClient) -> None
 
     mina = find_node(client, snapshot_id, "Mina Rahman")
     domain_admins = find_node(client, snapshot_id, "Domain Admins")
+    assert len(str(mina["stable_fingerprint"])) == 64
+    assert mina["first_seen_at"] == mina["last_seen_at"]
+    neighborhood = client.get(f"/api/v1/nodes/{mina['id']}/neighborhood", params={"depth": 1})
+    assert neighborhood.status_code == 200
+    assert any(item["data"]["id"] == mina["id"] for item in neighborhood.json()["nodes"])
     analysis = client.post(
         f"/api/v1/snapshots/{snapshot_id}/analyses",
         headers={"X-CSRF-Token": csrf},
@@ -52,7 +57,13 @@ def test_graph_summary_and_explainable_bounded_paths(client: TestClient) -> None
     assert result["path_count"] == 1
     assert result["paths"][0]["hop_count"] >= 1
     assert result["paths"][0]["steps"][0]["source_name"] == "Mina Rahman"
+    assert result["paths"][0]["steps"][0]["source_type"] == "User"
+    assert result["paths"][0]["steps"][-1]["target_type"] == "Group"
+    assert result["paths"][0]["severity"] in {"critical", "high", "medium", "low"}
+    assert result["paths"][0]["steps"][0]["evidence"]["fictional"] is True
     assert result["paths"][0]["steps"][-1]["target_name"] == "Domain Admins"
+    assert result["paths"][0]["scoring_components"]["base"] == 100.0
+    assert "not certainty" in result["paths"][0]["scoring_components"]["interpretation"]
     assert "does not prove" in result["paths"][0]["limitations"]
     assert all(step["relationship_id"] for step in result["paths"][0]["steps"])
     assert client.get(f"/api/v1/analyses/{result['id']}").json() == result

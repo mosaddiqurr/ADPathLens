@@ -36,7 +36,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(
     title="ADPathLens API",
     description="Defensive Active Directory attack-path lab visualizer.",
-    version="0.1.0",
+    version="1.0.0-rc1",
     lifespan=lifespan,
 )
 app.add_middleware(
@@ -44,7 +44,7 @@ app.add_middleware(
     allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "DELETE"],
-    allow_headers=["Content-Type", "X-CSRF-Token", "X-Request-ID"],
+    allow_headers=["Content-Type", "X-CSRF-Token", "X-Request-ID", "X-ADPathLens-Local"],
     expose_headers=["X-Request-ID"],
 )
 app.add_exception_handler(AppError, app_error_handler)  # type: ignore[arg-type]

@@ -20,6 +20,27 @@ export type Project = {
   status: string;
 };
 
+export type ProjectStatistics = {
+  project_id: string;
+  latest_import_at: string | null;
+  import_count: number;
+  snapshot_count: number;
+  node_count: number;
+  relationship_count: number;
+  finding_count: number;
+  path_count: number;
+  remediation_plan_count: number;
+  comparison_count: number;
+  report_count: number;
+  recent_activity: Array<{
+    id: string;
+    action: string;
+    summary: string;
+    outcome: string;
+    created_at: string;
+  }>;
+};
+
 export type Dataset = {
   id: string;
   project_id: string;
@@ -29,6 +50,8 @@ export type Dataset = {
   progress_percent: number;
   node_count: number;
   relationship_count: number;
+  warning_count: number;
+  rejected_record_count: number;
   data_hash: string;
 };
 
@@ -64,6 +87,9 @@ export type DirectoryNode = {
   high_value: boolean;
   privileged: boolean;
   risk_level: string;
+  stable_fingerprint: string;
+  first_seen_at: string;
+  last_seen_at: string;
 };
 
 export type DirectoryRelationship = {
@@ -78,6 +104,9 @@ export type DirectoryRelationship = {
   confidence: string;
   risk_weight: number;
   description: string;
+  stable_fingerprint: string;
+  first_seen_at: string;
+  last_seen_at: string;
 };
 
 export type GraphPayload = {
@@ -92,14 +121,17 @@ export type PathStep = {
   position: number;
   source_node_id: string;
   source_name: string;
+  source_type: string;
   relationship_id: string;
   relationship_type: string;
   target_node_id: string;
   target_name: string;
+  target_type: string;
   step_explanation: string;
   remediation_summary: string;
   confidence: string;
   risk_weight: number;
+  evidence: Record<string, unknown>;
 };
 
 export type PathResult = {
@@ -108,6 +140,8 @@ export type PathResult = {
   total_weight: number;
   hop_count: number;
   risk_score: number;
+  severity: string;
+  scoring_components: Record<string, unknown>;
   confidence: string;
   explanation: string;
   limitations: string;
@@ -118,6 +152,10 @@ export type Analysis = {
   id: string;
   snapshot_id: string;
   algorithm: string;
+  start_node_id?: string;
+  target_node_id?: string | null;
+  maximum_depth?: number;
+  request_parameters?: Record<string, unknown>;
   status: string;
   path_count: number;
   truncated: boolean;
@@ -145,6 +183,10 @@ export type Finding = {
   validation_steps: string[];
   limitations: string;
   reviewer_notes: string;
+  stable_fingerprint: string;
+  first_seen_at: string;
+  last_seen_at: string;
+  recurrence_count: number;
 };
 
 export type RemediationPlan = {
@@ -164,11 +206,20 @@ export type Comparison = {
   nodes_added: number;
   nodes_removed: number;
   nodes_changed: number;
+  nodes_unchanged: number;
   relationships_added: number;
   relationships_removed: number;
   relationships_changed: number;
+  relationships_unchanged: number;
   paths_added: number;
   paths_removed: number;
+  paths_unchanged: number;
+  findings_added: number;
+  findings_resolved: number;
+  findings_reopened: number;
+  severity_changes: number;
+  status: string;
+  remediation_outcomes: Record<string, unknown>;
   risk_score_before: number;
   risk_score_after: number;
 };
@@ -186,4 +237,3 @@ export type Report = {
   size_bytes: number;
   generated_at: string;
 };
-

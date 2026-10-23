@@ -1,5 +1,6 @@
 import csv
 import io
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Query, Request, Response
@@ -12,12 +13,17 @@ from app.api.deps import (
     CurrentUser,
 )
 from app.audit.service import record_audit
+from app.core.config import get_settings
 from app.core.errors import AppError
 from app.graph.catalog import RELATIONSHIP_CATALOG
 from app.graph.service import graph_cache
 from app.models.entities import (
     ApplicationSetting,
     AuditEvent,
+    Dataset,
+    PathAnalysis,
+    Project,
+    Report,
     RiskRuleConfiguration,
 )
 from app.reporting.service import safe_csv_cell
@@ -30,6 +36,7 @@ from app.schemas.administration import (
 from app.schemas.graph import PageResponse
 
 router = APIRouter(tags=["administration"])
+settings = get_settings()
 
 RULE_CATALOG: dict[str, str] = {
     "APL-001": "Non-privileged principal controls a privileged asset",
@@ -76,6 +83,30 @@ async def capabilities(user: CurrentUser) -> dict[str, object]:
             "top_paths",
             "reverse_reachability",
         ],
+    }
+
+
+@router.get("/system/status")
+async def system_status(db: DB, _: Administrator) -> dict[str, object]:
+    await db.scalar(select(func.count(Project.id)))
+    report_root = settings.report_storage_path.resolve()
+    return {
+        "application": {"name": settings.app_name, "version": "1.0.0-rc1", "environment": settings.app_env},
+        "database": {"status": "healthy"},
+        "report_storage": {
+            "status": "healthy" if report_root.is_dir() else "unavailable",
+            "generated_report_count": int(await db.scalar(select(func.count(Report.id))) or 0),
+        },
+        "workload": {
+            "projects": int(await db.scalar(select(func.count(Project.id))) or 0),
+            "imports": int(await db.scalar(select(func.count(Dataset.id))) or 0),
+            "analyses": int(await db.scalar(select(func.count(PathAnalysis.id))) or 0),
+        },
+        "capabilities": {
+            "demo": settings.demo_mode,
+            "formats": ["html", "pdf", "json", "csv"],
+            "algorithms": ["shortest_hops", "lowest_cost", "top_paths", "reverse_reachability"],
+        },
     }
 
 
@@ -229,12 +260,30 @@ async def audit_events(
     page_size: Annotated[int, Query(ge=1, le=200)] = 50,
     action: str = "",
     entity_type: str = "",
+    user_id: str = "",
+    project_id: str = "",
+    outcome: str = "",
+    correlation_id: str = "",
+    created_after: datetime | None = None,
+    created_before: datetime | None = None,
 ) -> PageResponse:
     conditions = []
     if action:
         conditions.append(AuditEvent.action == action)
     if entity_type:
         conditions.append(AuditEvent.entity_type == entity_type)
+    if user_id:
+        conditions.append(AuditEvent.user_id == user_id)
+    if project_id:
+        conditions.append(AuditEvent.project_id == project_id)
+    if outcome:
+        conditions.append(AuditEvent.outcome == outcome)
+    if correlation_id:
+        conditions.append(AuditEvent.correlation_id == correlation_id[:128])
+    if created_after:
+        conditions.append(AuditEvent.created_at >= created_after)
+    if created_before:
+        conditions.append(AuditEvent.created_at <= created_before)
     total = await db.scalar(select(func.count(AuditEvent.id)).where(*conditions)) or 0
     events = list(
         (
@@ -257,18 +306,23 @@ async def audit_events(
 
 @router.get("/audit/events/export")
 async def export_audit_events(db: DB, _: Administrator) -> Response:
-    events = list((await db.scalars(select(AuditEvent).order_by(AuditEvent.created_at, AuditEvent.id))).all())
+    events = list(
+        (await db.scalars(select(AuditEvent).order_by(AuditEvent.created_at, AuditEvent.id).limit(10_000))).all()
+    )
     output = io.StringIO(newline="")
     writer = csv.writer(output)
     writer.writerow(
         [
             "created_at",
             "user_id",
+            "project_id",
             "action",
             "entity_type",
             "entity_id",
             "summary",
             "source_ip",
+            "outcome",
+            "correlation_id",
         ]
     )
     for event in events:
@@ -276,11 +330,14 @@ async def export_audit_events(db: DB, _: Administrator) -> Response:
             [
                 safe_csv_cell(event.created_at.isoformat()),
                 safe_csv_cell(event.user_id),
+                safe_csv_cell(event.project_id),
                 safe_csv_cell(event.action),
                 safe_csv_cell(event.entity_type),
                 safe_csv_cell(event.entity_id),
                 safe_csv_cell(event.summary),
                 safe_csv_cell(event.source_ip),
+                safe_csv_cell(event.outcome),
+                safe_csv_cell(event.correlation_id),
             ]
         )
     return Response(

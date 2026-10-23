@@ -14,3 +14,6 @@ descriptions, and 64 KiB metadata objects.
 Non-UTF-8 input, traversal, absolute paths, symlinks, nested archives, unexpected entries,
 executable signatures, duplicate IDs/entries, missing endpoints, prohibited loops, unsupported
 types, invalid booleans, and compression limit violations are rejected.
+
+See [IMPORTS.md](IMPORTS.md) for the validation/import transaction, provenance, warning/rejected
+counters, and stable lifecycle identity methodology.

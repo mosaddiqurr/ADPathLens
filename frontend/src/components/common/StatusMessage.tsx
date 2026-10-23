@@ -7,9 +7,11 @@ export function StatusMessage({
 }) {
   if (!message) return null;
   return (
-    <div className={`notice notice-${tone}`} role={tone === "danger" ? "alert" : "status"}>
+    <div
+      className={`notice notice-${tone}`}
+      role={tone === "danger" ? "alert" : "status"}
+    >
       {message}
     </div>
   );
 }
-

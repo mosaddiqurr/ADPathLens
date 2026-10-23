@@ -36,10 +36,13 @@ class AuditEventResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
     user_id: str | None
+    project_id: str | None
     action: str
     entity_type: str
     entity_id: str | None
     summary: str
     source_ip: str | None
+    outcome: str
+    correlation_id: str | None
     context_json: dict[str, Any]
     created_at: datetime

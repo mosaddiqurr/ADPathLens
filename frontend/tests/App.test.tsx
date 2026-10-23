@@ -13,8 +13,15 @@ describe("App", () => {
       const url = String(input);
       if (url.endsWith("/auth/me")) {
         return new Response(
-          JSON.stringify({ title: "Authentication required", detail: "Please sign in.", status: 401 }),
-          { status: 401, headers: { "Content-Type": "application/problem+json" } },
+          JSON.stringify({
+            title: "Authentication required",
+            detail: "Please sign in.",
+            status: 401,
+          }),
+          {
+            status: 401,
+            headers: { "Content-Type": "application/problem+json" },
+          },
         );
       }
       return new Response(JSON.stringify({ setup_required: false }), {
@@ -29,9 +36,10 @@ describe("App", () => {
         </AuthProvider>
       </MemoryRouter>,
     );
-    expect(await screen.findByRole("heading", { name: "ADPathLens" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "ADPathLens" }),
+    ).toBeInTheDocument();
     expect(screen.getByText(/Use only synthetic data/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sign in" })).toBeInTheDocument();
   });
 });
-

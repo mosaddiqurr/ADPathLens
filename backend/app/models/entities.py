@@ -120,6 +120,8 @@ class Dataset(Base):
     data_hash: Mapped[str] = mapped_column(String(64), index=True)
     schema_version: Mapped[str] = mapped_column(String(16), default="1.0")
     progress_percent: Mapped[int] = mapped_column(Integer, default=100)
+    warning_count: Mapped[int] = mapped_column(Integer, default=0)
+    rejected_record_count: Mapped[int] = mapped_column(Integer, default=0)
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
@@ -191,6 +193,9 @@ class DirectoryNode(Base):
     privileged: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     risk_level: Mapped[str] = mapped_column(String(32), default="informational")
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    stable_fingerprint: Mapped[str] = mapped_column(String(64), index=True)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
@@ -217,6 +222,9 @@ class DirectoryRelationship(Base):
     description: Mapped[str] = mapped_column(Text, default="")
     evidence_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    stable_fingerprint: Mapped[str] = mapped_column(String(64), index=True)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
@@ -225,11 +233,14 @@ class AuditEvent(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
     user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    project_id: Mapped[str | None] = mapped_column(ForeignKey("projects.id", ondelete="SET NULL"), index=True)
     action: Mapped[str] = mapped_column(String(128), index=True)
     entity_type: Mapped[str] = mapped_column(String(64), index=True)
     entity_id: Mapped[str | None] = mapped_column(String(36), index=True)
     summary: Mapped[str] = mapped_column(String(1000))
     source_ip: Mapped[str | None] = mapped_column(String(64))
+    outcome: Mapped[str] = mapped_column(String(32), default="success", index=True)
+    correlation_id: Mapped[str | None] = mapped_column(String(128), index=True)
     context_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
 
@@ -266,6 +277,7 @@ class PrivilegePath(Base):
     total_weight: Mapped[float] = mapped_column(Float)
     hop_count: Mapped[int] = mapped_column(Integer)
     risk_score: Mapped[float] = mapped_column(Float)
+    scoring_components: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     confidence: Mapped[str] = mapped_column(String(32))
     explanation: Mapped[str] = mapped_column(Text)
     limitations: Mapped[str] = mapped_column(Text)
@@ -316,6 +328,10 @@ class RiskFinding(Base):
     validation_steps: Mapped[list[str]] = mapped_column(JSON, default=list)
     limitations: Mapped[str] = mapped_column(Text, default="")
     reviewer_notes: Mapped[str] = mapped_column(Text, default="")
+    stable_fingerprint: Mapped[str] = mapped_column(String(64), index=True)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    recurrence_count: Mapped[int] = mapped_column(Integer, default=1)
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
     reviewed_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -385,8 +401,31 @@ class RemediationAction(Base):
     priority: Mapped[str] = mapped_column(String(32), default="medium")
     status: Mapped[str] = mapped_column(String(32), default="proposed")
     validation_notes: Mapped[str] = mapped_column(Text, default="")
+    assigned_to: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    progress_percent: Mapped[int] = mapped_column(Integer, default=0)
+    expected_outcome: Mapped[str] = mapped_column(Text, default="")
+    actual_outcome: Mapped[str] = mapped_column(Text, default="")
+    verification_state: Mapped[str] = mapped_column(String(32), default="not_verified", index=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+
+class RemediationActionHistory(Base):
+    __tablename__ = "remediation_action_history"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    remediation_action_id: Mapped[str] = mapped_column(
+        ForeignKey("remediation_actions.id", ondelete="CASCADE"), index=True
+    )
+    previous_status: Mapped[str | None] = mapped_column(String(32))
+    new_status: Mapped[str] = mapped_column(String(32), index=True)
+    previous_progress: Mapped[int | None] = mapped_column(Integer)
+    new_progress: Mapped[int] = mapped_column(Integer)
+    note: Mapped[str] = mapped_column(Text, default="")
+    changed_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
 class SnapshotComparison(Base):
@@ -396,17 +435,27 @@ class SnapshotComparison(Base):
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
     before_snapshot_id: Mapped[str] = mapped_column(ForeignKey("graph_snapshots.id"))
     after_snapshot_id: Mapped[str] = mapped_column(ForeignKey("graph_snapshots.id"))
+    status: Mapped[str] = mapped_column(String(32), default="complete", index=True)
     nodes_added: Mapped[int] = mapped_column(Integer, default=0)
     nodes_removed: Mapped[int] = mapped_column(Integer, default=0)
     nodes_changed: Mapped[int] = mapped_column(Integer, default=0)
+    nodes_unchanged: Mapped[int] = mapped_column(Integer, default=0)
     relationships_added: Mapped[int] = mapped_column(Integer, default=0)
     relationships_removed: Mapped[int] = mapped_column(Integer, default=0)
     relationships_changed: Mapped[int] = mapped_column(Integer, default=0)
+    relationships_unchanged: Mapped[int] = mapped_column(Integer, default=0)
     paths_added: Mapped[int] = mapped_column(Integer, default=0)
     paths_removed: Mapped[int] = mapped_column(Integer, default=0)
+    paths_unchanged: Mapped[int] = mapped_column(Integer, default=0)
+    findings_added: Mapped[int] = mapped_column(Integer, default=0)
+    findings_resolved: Mapped[int] = mapped_column(Integer, default=0)
+    findings_reopened: Mapped[int] = mapped_column(Integer, default=0)
+    severity_changes: Mapped[int] = mapped_column(Integer, default=0)
     risk_score_before: Mapped[float] = mapped_column(Float, default=0)
     risk_score_after: Mapped[float] = mapped_column(Float, default=0)
     diff_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    remediation_outcomes: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    error_code: Mapped[str | None] = mapped_column(String(64))
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 

@@ -1,3 +1,5 @@
+import { apiUrl } from "./url";
+
 export type Problem = {
   title: string;
   detail: string;
@@ -37,7 +39,7 @@ export async function api<T>(
   if (!["GET", "HEAD", "OPTIONS"].includes(method) && csrfToken) {
     headers.set("X-CSRF-Token", csrfToken);
   }
-  const response = await fetch(`/api/v1${path}`, {
+  const response = await fetch(apiUrl(path), {
     ...options,
     body,
     headers,
@@ -57,6 +59,9 @@ export async function api<T>(
 }
 
 export function errorMessage(error: unknown): string {
-  return error instanceof ApiError ? error.problem.detail : "The request could not be completed.";
+  return error instanceof ApiError
+    ? error.problem.detail
+    : error instanceof Error && !(error instanceof TypeError)
+      ? error.message
+      : "Could not reach the analysis server. Check that ADPathLens is running, then try again.";
 }
-

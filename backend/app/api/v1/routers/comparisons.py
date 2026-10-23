@@ -1,6 +1,9 @@
+import csv
+import io
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Query, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 
 from app.api.deps import DB, CurrentUser, EditorCsrf
@@ -15,6 +18,7 @@ from app.models.entities import (
     SnapshotComparison,
     User,
 )
+from app.reporting.service import safe_csv_cell
 from app.schemas.comparisons import (
     ComparisonCreate,
     ComparisonItemPage,
@@ -50,7 +54,7 @@ def _changed_fields(before: Any, after: Any, fields: tuple[str, ...]) -> dict[st
 
 async def _create_diff(
     db: DB, before_id: str, after_id: str
-) -> tuple[dict[str, list[dict[str, object]]], dict[str, int | float]]:
+) -> tuple[dict[str, list[dict[str, object]]], dict[str, Any]]:
     before_nodes = {
         item.external_id: item
         for item in (await db.scalars(select(DirectoryNode).where(DirectoryNode.snapshot_id == before_id))).all()
@@ -180,8 +184,12 @@ async def _create_diff(
 
     before_findings = list((await db.scalars(select(RiskFinding).where(RiskFinding.snapshot_id == before_id))).all())
     after_findings = list((await db.scalars(select(RiskFinding).where(RiskFinding.snapshot_id == after_id))).all())
-    before_by_key = {f"{item.rule_id or 'manual'}:{item.title}": item for item in before_findings}
-    after_by_key = {f"{item.rule_id or 'manual'}:{item.title}": item for item in after_findings}
+    before_by_key = {
+        item.stable_fingerprint or f"{item.rule_id or 'manual'}:{item.title}": item for item in before_findings
+    }
+    after_by_key = {
+        item.stable_fingerprint or f"{item.rule_id or 'manual'}:{item.title}": item for item in after_findings
+    }
     finding_items: list[dict[str, object]] = []
     for key in sorted(set(after_by_key) - set(before_by_key)):
         finding_items.append(
@@ -200,6 +208,7 @@ async def _create_diff(
             }
         )
     severity_items: list[dict[str, object]] = []
+    reopened_items: list[dict[str, object]] = []
     for key in sorted(set(before_by_key) & set(after_by_key)):
         old = before_by_key[key]
         new = after_by_key[key]
@@ -213,6 +222,49 @@ async def _create_diff(
                     "score_after": new.internal_score,
                 }
             )
+        if old.status in {"resolved", "closed", "false_positive"} and new.status not in {
+            "resolved",
+            "closed",
+            "false_positive",
+        }:
+            reopened_items.append(
+                {
+                    "change": "reopened",
+                    "identity": key,
+                    "status_before": old.status,
+                    "status_after": new.status,
+                }
+            )
+
+    common_paths = set(before_paths) & set(after_paths)
+    common_relationships = set(before_relationships) & set(after_relationships)
+    unchanged_relationships = common_relationships - {str(item["external_id"]) for item in relationship_changed}
+    unchanged_nodes = overlap - {str(item["external_id"]) for item in node_changed}
+    removed_path_count = len(set(before_paths) - set(after_paths))
+    added_path_count = len(set(after_paths) - set(before_paths))
+    remediation_summary: dict[str, object] = {
+        "path_removed": removed_path_count > 0,
+        "path_shortened": False,
+        "path_changed": bool(removed_path_count and added_path_count),
+        "finding_resolved": len(set(before_by_key) - set(after_by_key)) > 0,
+        "finding_reopened": bool(reopened_items),
+        "no_measurable_change": not any(
+            (
+                node_added,
+                node_removed,
+                node_changed,
+                relationship_added,
+                relationship_removed,
+                relationship_changed,
+                paths,
+                finding_items,
+                severity_items,
+            )
+        ),
+        "new_risk_introduced": added_path_count > removed_path_count
+        or sum(item.internal_score for item in after_findings) > sum(item.internal_score for item in before_findings),
+        "verification_unavailable": not before_paths and not after_paths,
+    }
 
     items: dict[str, list[dict[str, object]]] = {
         "nodes": node_added + node_removed + node_changed,
@@ -220,19 +272,29 @@ async def _create_diff(
         "paths": paths,
         "findings": finding_items,
         "severity": severity_items,
+        "remediation": [remediation_summary],
+        "reopened": reopened_items,
     }
-    metrics: dict[str, int | float] = {
+    metrics: dict[str, Any] = {
         "nodes_added": len(node_added),
         "nodes_removed": len(node_removed),
         "nodes_changed": len(node_changed),
+        "nodes_unchanged": len(unchanged_nodes),
         "relationships_added": len(relationship_added),
         "relationships_removed": len(relationship_removed),
         "relationships_changed": len(relationship_changed),
-        "paths_added": len(set(after_paths) - set(before_paths)),
-        "paths_removed": len(set(before_paths) - set(after_paths)),
+        "relationships_unchanged": len(unchanged_relationships),
+        "paths_added": added_path_count,
+        "paths_removed": removed_path_count,
+        "paths_unchanged": len(common_paths),
+        "findings_added": len(set(after_by_key) - set(before_by_key)),
+        "findings_resolved": len(set(before_by_key) - set(after_by_key)),
+        "findings_reopened": len(reopened_items),
+        "severity_changes": len(severity_items),
         "risk_score_before": round(sum(item.internal_score for item in before_findings), 2),
         "risk_score_after": round(sum(item.internal_score for item in after_findings), 2),
     }
+    metrics["remediation_outcomes"] = remediation_summary
     return items, metrics
 
 
@@ -284,6 +346,7 @@ async def create_comparison(
         "Snapshot comparison created",
         user=user,
         entity_id=comparison.id,
+        project_id=project_id,
         context={
             "before_snapshot_id": before.id,
             "after_snapshot_id": after.id,
@@ -316,6 +379,44 @@ async def get_comparison(comparison_id: str, db: DB, user: CurrentUser) -> Snaps
     return await _comparison_or_404(db, user, comparison_id)
 
 
+@router.get("/comparisons/{comparison_id}/export")
+async def export_comparison(
+    comparison_id: str,
+    db: DB,
+    user: CurrentUser,
+) -> StreamingResponse:
+    comparison = await _comparison_or_404(db, user, comparison_id)
+    output = io.StringIO(newline="")
+    writer = csv.writer(output)
+    writer.writerow(["category", "change", "identity", "details"])
+    for category in sorted(comparison.diff_json):
+        values = comparison.diff_json.get(category, [])
+        if not isinstance(values, list):
+            continue
+        for item in values[:10_000]:
+            if not isinstance(item, dict):
+                continue
+            identity = item.get("external_id") or item.get("identity") or item.get("signature") or ""
+            writer.writerow(
+                [
+                    safe_csv_cell(category),
+                    safe_csv_cell(item.get("change", "")),
+                    safe_csv_cell(identity),
+                    safe_csv_cell(str(item)),
+                ]
+            )
+    content = output.getvalue().encode("utf-8-sig")
+    filename = f"adpathlens-comparison-{comparison.id[:8]}.csv"
+    return StreamingResponse(
+        iter([content]),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
 @router.get(
     "/comparisons/{comparison_id}/{category}",
     response_model=ComparisonItemPage,
@@ -329,12 +430,12 @@ async def comparison_items(
     page_size: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> ComparisonItemPage:
     comparison = await _comparison_or_404(db, user, comparison_id)
-    allowed = {"nodes", "relationships", "paths", "findings", "severity"}
+    allowed = {"nodes", "relationships", "paths", "findings", "severity", "remediation", "reopened"}
     if category not in allowed:
         raise AppError(
             404,
             "Comparison category not found",
-            "Choose nodes, relationships, paths, findings, or severity.",
+            "Choose nodes, relationships, paths, findings, severity, remediation, or reopened.",
             code="not_found",
         )
     raw = comparison.diff_json.get(category, [])

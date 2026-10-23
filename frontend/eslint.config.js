@@ -15,7 +15,10 @@ export default tseslint.config(
       ...reactHooks.configs.recommended.rules,
       // Data-loading effects call async functions whose state updates occur after awaits.
       "react-hooks/set-state-in-effect": "off",
-      "react-refresh/only-export-components": ["warn", { allowConstantExport: true }]
-    }
-  }
+      "react-refresh/only-export-components": [
+        "warn",
+        { allowConstantExport: true },
+      ],
+    },
+  },
 );

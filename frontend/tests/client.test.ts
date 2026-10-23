@@ -23,8 +23,15 @@ describe("API client", () => {
 
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(
-        JSON.stringify({ title: "Forbidden", detail: "Object is outside this workspace.", status: 403 }),
-        { status: 403, headers: { "Content-Type": "application/problem+json" } },
+        JSON.stringify({
+          title: "Forbidden",
+          detail: "Object is outside this workspace.",
+          status: 403,
+        }),
+        {
+          status: 403,
+          headers: { "Content-Type": "application/problem+json" },
+        },
       ),
     );
     await expect(api("/projects/other")).rejects.toEqual(
@@ -32,4 +39,3 @@ describe("API client", () => {
     );
   });
 });
-

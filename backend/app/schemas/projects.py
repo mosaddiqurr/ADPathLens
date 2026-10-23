@@ -28,6 +28,21 @@ class ProjectResponse(BaseModel):
     updated_at: datetime
 
 
+class ProjectStatisticsResponse(BaseModel):
+    project_id: str
+    latest_import_at: datetime | None
+    import_count: int
+    snapshot_count: int
+    node_count: int
+    relationship_count: int
+    finding_count: int
+    path_count: int
+    remediation_plan_count: int
+    comparison_count: int
+    report_count: int
+    recent_activity: list[dict[str, Any]]
+
+
 class DemoImportRequest(BaseModel):
     demo: str = Field(default="small", pattern="^(small|medium|before|after)$")
     authorization_confirmed: bool
@@ -51,6 +66,8 @@ class DatasetResponse(BaseModel):
     progress_percent: int
     node_count: int
     relationship_count: int
+    warning_count: int
+    rejected_record_count: int
     data_hash: str
     created_at: datetime
 
@@ -61,6 +78,8 @@ class ImportProgressResponse(BaseModel):
     progress_percent: int
     node_count: int
     relationship_count: int
+    warning_count: int
+    rejected_record_count: int
     validation_summary: dict[str, Any]
 
 

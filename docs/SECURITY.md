@@ -1,19 +1,20 @@
 # Security design
 
-- Passwords use Argon2id with bounded input length. Production enforces a strong secret and secure
-  environment settings.
-- Sessions store only SHA-256 token hashes server-side; cookies are opaque, HttpOnly,
-  SameSite=Lax, expiring, revocable, and configurable Secure.
-- Cookie-authenticated mutations require CSRF. Login errors are generic and throttled by normalized
-  email plus source IP.
-- Global role, workspace membership, project scope, and object ownership are enforced by the API.
-  Unauthorized object access returns non-disclosing not-found responses.
-- Imports enforce body/content/archive limits and are never executed. Source files are not retained.
-- Imported text is escaped in HTML, structured directly into PDF, and neutralized in CSV cells.
-- CSP, frame denial, MIME sniffing prevention, referrer policy, CORS allow-listing, request IDs,
-  structured redacted logs, and safe Problem Details responses are enabled.
-- Audit records exclude passwords, cookies, raw uploads, and sensitive metadata.
+Local mode is a convenience for the portfolio demo, enabled only in development. Both the actual client peer and requested host must be loopback. Supplied origins must be loopback and allowlisted; cross-site requests are rejected. Session creation requires the custom `X-ADPathLens-Local` header. Uvicorn local startup disables forwarded-header trust so a remote peer cannot become loopback through a forged header.
 
-Security regression coverage includes CSRF, IDOR, cross-workspace isolation, archive traversal,
-symlinks, duplicate ZIP entries, nested archives, executable signatures, compression bombs, stored
-XSS payloads, report escaping, CSV formulas, cookie attributes, and headers.
+The dedicated local account is an analyst. Bootstrap creates a workspace only in an empty account database; it refuses to adopt an existing shared account database. The local database default is `adpathlens-local.db`. Setting `LOCAL_MODE=false` restores the password-based shared workflow. Production settings reject local mode.
+
+Existing controls remain in the API:
+
+- Argon2id password hashing with bounded input, opaque expiring/revocable HttpOnly SameSite cookies, and server-side token hashes.
+- CSRF tokens for authenticated mutations, generic login errors, and per-email/source throttling.
+- Role, membership, project, snapshot, finding, report, and other object ownership enforcement with non-disclosing not-found responses.
+- Import size/content/archive limits, schema validation, digest binding, explicit authorization, and warning acknowledgement. Uploads are parsed, never executed, and source files are not retained.
+- HTML escaping, structured PDF text, CSV formula neutralization, UUID report names, and authorized download paths.
+- CSP, frame denial, MIME sniffing prevention, referrer policy, allowlisted CORS, request IDs, safe Problem Details responses, and redacted logging/audit records.
+- Production checks for secrets, secure cookies, HTTPS origins/public URLs, absolute persistent SQLite and report storage, and disabled demo/E2E/local modes.
+- Ownership-aware local process control.
+
+Tests cover CSRF, IDOR, cross-workspace isolation, local-mode boundaries, archive traversal/symlinks/duplicate entries/nested archives/compression bombs, stored XSS, report escaping, CSV formulas, cookies, and security headers. Bandit and online dependency audits supplement those tests; they do not replace a deployment review.
+
+The tool interprets supplied relationship evidence. It does not collect directory credentials, contact an AD domain, execute attack steps, or change directory permissions. Use only synthetic data or environments you are authorized to assess. Production hosting requires persistent storage, trusted HTTPS ingress, and private first-administrator provisioning. Same-site HTTPS custom domains support secure SameSite=Lax cookies; cross-site SameSite=None is subject to browser third-party-cookie restrictions. See [DEPLOYMENT.md](DEPLOYMENT.md).

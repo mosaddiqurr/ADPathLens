@@ -47,6 +47,9 @@ class RemediationActionCreate(BaseModel):
     description: str = Field(min_length=3, max_length=4000)
     proposed_change: dict[str, Any] = Field(default_factory=dict)
     priority: str = Field(default="medium", pattern="^(low|medium|high|urgent)$")
+    assigned_to: str | None = None
+    due_at: datetime | None = None
+    expected_outcome: str = Field(default="", max_length=8000)
 
     @model_validator(mode="after")
     def validate_target(self) -> "RemediationActionCreate":
@@ -72,6 +75,13 @@ class RemediationActionResponse(BaseModel):
     priority: str
     status: str
     validation_notes: str
+    assigned_to: str | None
+    due_at: datetime | None
+    progress_percent: int
+    expected_outcome: str
+    actual_outcome: str
+    verification_state: str
+    completed_at: datetime | None
     created_at: datetime
     updated_at: datetime
 
@@ -80,8 +90,34 @@ class RemediationActionUpdate(BaseModel):
     description: str | None = Field(default=None, min_length=3, max_length=4000)
     proposed_change: dict[str, Any] | None = None
     priority: str | None = Field(default=None, pattern="^(low|medium|high|urgent)$")
-    status: str | None = Field(default=None, pattern="^(proposed|accepted|rejected|simulated|validated)$")
+    status: str | None = Field(
+        default=None,
+        pattern="^(proposed|planned|in_progress|blocked|accepted|rejected|simulated|completed|verified|cancelled)$",
+    )
     validation_notes: str | None = Field(default=None, max_length=4000)
+    assigned_to: str | None = None
+    due_at: datetime | None = None
+    progress_percent: int | None = Field(default=None, ge=0, le=100)
+    expected_outcome: str | None = Field(default=None, max_length=8000)
+    actual_outcome: str | None = Field(default=None, max_length=8000)
+    verification_state: str | None = Field(
+        default=None,
+        pattern="^(not_verified|verification_unavailable|no_measurable_change|path_removed|path_shortened|path_changed|finding_resolved|finding_reopened|new_risk_introduced|verified)$",
+    )
+    history_note: str = Field(default="", max_length=4000)
+
+
+class RemediationHistoryResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    remediation_action_id: str
+    previous_status: str | None
+    new_status: str
+    previous_progress: int | None
+    new_progress: int
+    note: str
+    changed_by: str
+    changed_at: datetime
 
 
 class RemediationPreviewResponse(BaseModel):

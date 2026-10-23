@@ -1,16 +1,18 @@
 import hashlib
 import json
 from datetime import UTC, datetime
-from typing import Annotated
+from pathlib import Path
+from typing import Annotated, Any
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from app.api.deps import DB, CsrfUser, CurrentUser, EditorCsrf
 from app.audit.service import record_audit
 from app.core.config import get_settings
 from app.core.errors import AppError
 from app.data.demos import get_demo
+from app.graph.service import graph_cache
 from app.importers.validator import (
     ValidationResult,
     validate_csv_bytes,
@@ -19,13 +21,20 @@ from app.importers.validator import (
     validate_zip_bytes,
 )
 from app.models.entities import (
+    AuditEvent,
     Dataset,
     DirectoryNode,
     DirectoryRelationship,
     GraphSnapshot,
     ImportedFile,
     ImportIssue,
+    PathAnalysis,
+    PrivilegePath,
     Project,
+    RemediationPlan,
+    Report,
+    RiskFinding,
+    SnapshotComparison,
     User,
     WorkspaceMembership,
 )
@@ -35,6 +44,7 @@ from app.schemas.projects import (
     ImportProgressResponse,
     ProjectCreate,
     ProjectResponse,
+    ProjectStatisticsResponse,
     ProjectUpdate,
     SnapshotResponse,
     ValidationResponse,
@@ -42,6 +52,25 @@ from app.schemas.projects import (
 from app.services.authorization import project_or_404, workspace_membership
 
 router = APIRouter(tags=["projects and datasets"])
+
+
+def _stable_fingerprint(*parts: object) -> str:
+    canonical = json.dumps(parts, ensure_ascii=False, separators=(",", ":"), sort_keys=True, default=str)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _remove_report_files(storage_paths: list[str]) -> None:
+    report_root = get_settings().report_storage_path.resolve()
+    for storage_path in storage_paths:
+        path = Path(storage_path).resolve()
+        if report_root not in path.parents:
+            continue
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            # Database deletion remains authoritative; an operator can remove an
+            # inaccessible orphan after correcting storage permissions.
+            continue
 
 
 def _validation_response(result: ValidationResult) -> ValidationResponse:
@@ -120,6 +149,8 @@ async def _import_result(
         validation_summary=result.summary(),
         node_count=len(result.nodes),
         relationship_count=len(result.relationships),
+        warning_count=len(warning_codes),
+        rejected_record_count=0,
         data_hash=result.digest,
         created_by=user.id,
     )
@@ -164,11 +195,40 @@ async def _import_result(
     )
     db.add(snapshot)
     await db.flush()
+    observed_at = snapshot.created_at
+    previous_node_first_seen = {
+        external_id: first_seen
+        for external_id, first_seen in (
+            await db.execute(
+                select(DirectoryNode.external_id, func.min(DirectoryNode.first_seen_at))
+                .join(GraphSnapshot, GraphSnapshot.id == DirectoryNode.snapshot_id)
+                .where(GraphSnapshot.project_id == project.id, GraphSnapshot.id != snapshot.id)
+                .group_by(DirectoryNode.external_id)
+            )
+        ).all()
+    }
+    previous_relationship_first_seen = {
+        external_id: first_seen
+        for external_id, first_seen in (
+            await db.execute(
+                select(DirectoryRelationship.external_id, func.min(DirectoryRelationship.first_seen_at))
+                .join(GraphSnapshot, GraphSnapshot.id == DirectoryRelationship.snapshot_id)
+                .where(GraphSnapshot.project_id == project.id, GraphSnapshot.id != snapshot.id)
+                .group_by(DirectoryRelationship.external_id)
+            )
+        ).all()
+    }
     node_lookup: dict[str, str] = {}
     for normalized in result.nodes:
         node = DirectoryNode(
             snapshot_id=snapshot.id,
             source_file_id=provenance_file_id,
+            stable_fingerprint=_stable_fingerprint(
+                normalized["external_id"],
+                normalized["node_type"],
+            ),
+            first_seen_at=previous_node_first_seen.get(normalized["external_id"]) or observed_at,
+            last_seen_at=observed_at,
             **normalized,
         )
         db.add(node)
@@ -184,6 +244,14 @@ async def _import_result(
                 source_file_id=provenance_file_id,
                 source_node_id=node_lookup[source_external_id],
                 target_node_id=node_lookup[target_external_id],
+                stable_fingerprint=_stable_fingerprint(
+                    normalized["external_id"],
+                    source_external_id,
+                    target_external_id,
+                    normalized["relationship_type"],
+                ),
+                first_seen_at=previous_relationship_first_seen.get(normalized["external_id"]) or observed_at,
+                last_seen_at=observed_at,
                 **relationship_data,
             )
         )
@@ -195,6 +263,7 @@ async def _import_result(
         f"Imported {len(result.nodes)} nodes and {len(result.relationships)} relationships",
         user=user,
         entity_id=dataset.id,
+        project_id=project.id,
         context={"snapshot_id": snapshot.id, "source_type": source_type},
     )
     await db.commit()
@@ -225,7 +294,16 @@ async def create_project(payload: ProjectCreate, request: Request, db: DB, user:
     )
     db.add(project)
     await db.flush()
-    await record_audit(db, request, "project.created", "project", "Project created", user=user, entity_id=project.id)
+    await record_audit(
+        db,
+        request,
+        "project.created",
+        "project",
+        "Project created",
+        user=user,
+        entity_id=project.id,
+        project_id=project.id,
+    )
     await db.commit()
     await db.refresh(project)
     return project
@@ -236,6 +314,60 @@ async def get_project(project_id: str, db: DB, user: CurrentUser) -> Project:
     return await project_or_404(db, user, project_id)
 
 
+@router.get("/projects/{project_id}/statistics", response_model=ProjectStatisticsResponse)
+async def project_statistics(project_id: str, db: DB, user: CurrentUser) -> ProjectStatisticsResponse:
+    await project_or_404(db, user, project_id)
+    latest_import_at = await db.scalar(select(func.max(Dataset.created_at)).where(Dataset.project_id == project_id))
+    snapshot_ids = select(GraphSnapshot.id).where(GraphSnapshot.project_id == project_id)
+
+    async def count(column: Any, condition: Any) -> int:
+        return int(await db.scalar(select(func.count(column)).where(condition)) or 0)
+
+    activity = list(
+        (
+            await db.scalars(
+                select(AuditEvent)
+                .where(AuditEvent.project_id == project_id)
+                .order_by(AuditEvent.created_at.desc())
+                .limit(10)
+            )
+        ).all()
+    )
+    return ProjectStatisticsResponse(
+        project_id=project_id,
+        latest_import_at=latest_import_at,
+        import_count=await count(Dataset.id, Dataset.project_id == project_id),
+        snapshot_count=await count(GraphSnapshot.id, GraphSnapshot.project_id == project_id),
+        node_count=await count(DirectoryNode.id, DirectoryNode.snapshot_id.in_(snapshot_ids)),
+        relationship_count=await count(
+            DirectoryRelationship.id,
+            DirectoryRelationship.snapshot_id.in_(snapshot_ids),
+        ),
+        finding_count=await count(RiskFinding.id, RiskFinding.project_id == project_id),
+        path_count=int(
+            await db.scalar(
+                select(func.count(PrivilegePath.id))
+                .join(PathAnalysis, PathAnalysis.id == PrivilegePath.path_analysis_id)
+                .where(PathAnalysis.project_id == project_id)
+            )
+            or 0
+        ),
+        remediation_plan_count=await count(RemediationPlan.id, RemediationPlan.project_id == project_id),
+        comparison_count=await count(SnapshotComparison.id, SnapshotComparison.project_id == project_id),
+        report_count=await count(Report.id, Report.project_id == project_id),
+        recent_activity=[
+            {
+                "id": event.id,
+                "action": event.action,
+                "summary": event.summary,
+                "outcome": event.outcome,
+                "created_at": event.created_at,
+            }
+            for event in activity
+        ],
+    )
+
+
 @router.patch("/projects/{project_id}", response_model=ProjectResponse)
 async def update_project(
     project_id: str, payload: ProjectUpdate, request: Request, db: DB, user: EditorCsrf
@@ -243,7 +375,16 @@ async def update_project(
     project = await project_or_404(db, user, project_id, minimum_role="analyst")
     for key, value in payload.model_dump(exclude_unset=True).items():
         setattr(project, key, value.strip() if isinstance(value, str) else value)
-    await record_audit(db, request, "project.updated", "project", "Project updated", user=user, entity_id=project.id)
+    await record_audit(
+        db,
+        request,
+        "project.updated",
+        "project",
+        "Project updated",
+        user=user,
+        entity_id=project.id,
+        project_id=project.id,
+    )
     await db.commit()
     await db.refresh(project)
     return project
@@ -252,9 +393,28 @@ async def update_project(
 @router.delete("/projects/{project_id}", status_code=204)
 async def delete_project(project_id: str, request: Request, db: DB, user: CsrfUser) -> None:
     project = await project_or_404(db, user, project_id, minimum_role="administrator")
-    await record_audit(db, request, "project.deleted", "project", "Project deleted", user=user, entity_id=project.id)
+    snapshot_ids = list(
+        (await db.scalars(select(GraphSnapshot.id).where(GraphSnapshot.project_id == project.id))).all()
+    )
+    reports = list((await db.scalars(select(Report).where(Report.project_id == project.id))).all())
+    report_paths = [report.storage_path for report in reports]
+    for report in reports:
+        await db.delete(report)
+    await record_audit(
+        db,
+        request,
+        "project.deleted",
+        "project",
+        "Project deleted",
+        user=user,
+        entity_id=project.id,
+        project_id=project.id,
+    )
     await db.delete(project)
     await db.commit()
+    _remove_report_files(report_paths)
+    for snapshot_id in snapshot_ids:
+        graph_cache.invalidate(snapshot_id)
 
 
 @router.get("/projects/{project_id}/datasets", response_model=list[DatasetResponse])
@@ -289,6 +449,7 @@ async def validate_json_dataset(
         "JSON dataset validation completed",
         user=user,
         entity_id=project.id,
+        project_id=project.id,
         context={"valid": result.valid},
     )
     await db.commit()
@@ -332,6 +493,7 @@ async def validate_csv_dataset(
         "CSV dataset validation completed",
         user=user,
         entity_id=project_id,
+        project_id=project_id,
         context={"valid": result.valid},
     )
     await db.commit()
@@ -528,6 +690,8 @@ async def import_progress(dataset_id: str, db: DB, user: CurrentUser) -> ImportP
         progress_percent=dataset.progress_percent,
         node_count=dataset.node_count,
         relationship_count=dataset.relationship_count,
+        warning_count=dataset.warning_count,
+        rejected_record_count=dataset.rejected_record_count,
         validation_summary=dataset.validation_summary,
     )
 
@@ -547,7 +711,16 @@ async def cancel_import(dataset_id: str, request: Request, db: DB, user: EditorC
         )
     dataset.import_status = "cancelled"
     dataset.cancelled_at = datetime.now(UTC)
-    await record_audit(db, request, "dataset.cancelled", "dataset", "Import cancelled", user=user, entity_id=dataset.id)
+    await record_audit(
+        db,
+        request,
+        "dataset.cancelled",
+        "dataset",
+        "Import cancelled",
+        user=user,
+        entity_id=dataset.id,
+        project_id=dataset.project_id,
+    )
     await db.commit()
     return ImportProgressResponse(
         id=dataset.id,
@@ -555,6 +728,8 @@ async def cancel_import(dataset_id: str, request: Request, db: DB, user: EditorC
         progress_percent=dataset.progress_percent,
         node_count=dataset.node_count,
         relationship_count=dataset.relationship_count,
+        warning_count=dataset.warning_count,
+        rejected_record_count=dataset.rejected_record_count,
         validation_summary=dataset.validation_summary,
     )
 
@@ -566,11 +741,46 @@ async def delete_dataset(dataset_id: str, request: Request, db: DB, user: Editor
         raise AppError(404, "Dataset not found", "The import does not exist.", code="not_found")
     await project_or_404(db, user, dataset.project_id, minimum_role="analyst")
     snapshots = list((await db.scalars(select(GraphSnapshot).where(GraphSnapshot.dataset_id == dataset.id))).all())
+    snapshot_ids = [snapshot.id for snapshot in snapshots]
+    comparisons: list[SnapshotComparison] = []
+    if snapshot_ids:
+        comparisons = list(
+            (
+                await db.scalars(
+                    select(SnapshotComparison).where(
+                        SnapshotComparison.before_snapshot_id.in_(snapshot_ids)
+                        | SnapshotComparison.after_snapshot_id.in_(snapshot_ids)
+                    )
+                )
+            ).all()
+        )
+    comparison_ids = [comparison.id for comparison in comparisons]
+    report_conditions = [Report.snapshot_id.in_(snapshot_ids)]
+    if comparison_ids:
+        report_conditions.append(Report.comparison_id.in_(comparison_ids))
+    reports = list((await db.scalars(select(Report).where(or_(*report_conditions)))).all()) if snapshot_ids else []
+    report_paths = [report.storage_path for report in reports]
+    for report in reports:
+        await db.delete(report)
+    for comparison in comparisons:
+        await db.delete(comparison)
     for snapshot in snapshots:
         await db.delete(snapshot)
     await db.delete(dataset)
-    await record_audit(db, request, "dataset.deleted", "dataset", "Import deleted", user=user, entity_id=dataset.id)
+    await record_audit(
+        db,
+        request,
+        "dataset.deleted",
+        "dataset",
+        "Import deleted",
+        user=user,
+        entity_id=dataset.id,
+        project_id=dataset.project_id,
+    )
     await db.commit()
+    _remove_report_files(report_paths)
+    for snapshot_id in snapshot_ids:
+        graph_cache.invalidate(snapshot_id)
 
 
 @router.get("/projects/{project_id}/snapshots", response_model=list[SnapshotResponse])

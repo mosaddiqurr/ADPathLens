@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -12,6 +13,7 @@ from app.models.entities import (
     DirectoryRelationship,
     GraphSnapshot,
     RemediationAction,
+    RemediationActionHistory,
     RemediationPlan,
     RiskFinding,
     User,
@@ -20,6 +22,7 @@ from app.schemas.remediation import (
     RemediationActionCreate,
     RemediationActionResponse,
     RemediationActionUpdate,
+    RemediationHistoryResponse,
     RemediationPlanCreate,
     RemediationPlanResponse,
     RemediationPlanUpdate,
@@ -88,6 +91,7 @@ async def create_plan(
         "Remediation plan created",
         user=user,
         entity_id=plan.id,
+        project_id=plan.project_id,
     )
     await db.commit()
     await db.refresh(plan)
@@ -118,6 +122,7 @@ async def update_plan(
         "Remediation plan updated",
         user=user,
         entity_id=plan.id,
+        project_id=plan.project_id,
     )
     await db.commit()
     await db.refresh(plan)
@@ -145,6 +150,7 @@ async def delete_plan(plan_id: str, request: Request, db: DB, user: EditorCsrf) 
         "Remediation plan deleted",
         user=user,
         entity_id=plan.id,
+        project_id=plan.project_id,
     )
     await db.delete(plan)
     await db.commit()
@@ -208,6 +214,10 @@ async def add_action(
         finding = await db.get(RiskFinding, payload.finding_id)
         if not finding or finding.project_id != plan.project_id:
             raise AppError(422, "Invalid finding", "Select a finding from this project.", code="finding")
+    if payload.assigned_to:
+        assignee = await db.get(User, payload.assigned_to)
+        if not assignee or not assignee.is_active:
+            raise AppError(422, "Invalid assignee", "Select an active user.", code="assignee")
     action = RemediationAction(
         remediation_plan_id=plan.id,
         finding_id=payload.finding_id,
@@ -218,8 +228,23 @@ async def add_action(
         proposed_change=payload.proposed_change,
         before_value=before,
         priority=payload.priority,
+        assigned_to=payload.assigned_to,
+        due_at=payload.due_at,
+        expected_outcome=payload.expected_outcome,
     )
     db.add(action)
+    await db.flush()
+    db.add(
+        RemediationActionHistory(
+            remediation_action_id=action.id,
+            previous_status=None,
+            new_status=action.status,
+            previous_progress=None,
+            new_progress=action.progress_percent,
+            note="Remediation action created.",
+            changed_by=user.id,
+        )
+    )
     await record_audit(
         db,
         request,
@@ -228,6 +253,7 @@ async def add_action(
         "Simulation action added",
         user=user,
         entity_id=plan.id,
+        project_id=plan.project_id,
         context={"action_type": payload.action_type},
     )
     await db.commit()
@@ -255,8 +281,31 @@ async def update_action(
             code="not_found",
         )
     plan = await _plan_or_404(db, user, action.remediation_plan_id, minimum_role="analyst")
-    for key, value in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    history_note = changes.pop("history_note", "")
+    if "assigned_to" in changes and changes["assigned_to"]:
+        assignee = await db.get(User, changes["assigned_to"])
+        if not assignee or not assignee.is_active:
+            raise AppError(422, "Invalid assignee", "Select an active user.", code="assignee")
+    previous_status = action.status
+    previous_progress = action.progress_percent
+    for key, value in changes.items():
         setattr(action, key, value)
+    if action.status in {"completed", "verified"} and action.completed_at is None:
+        action.completed_at = datetime.now(UTC)
+    elif action.status not in {"completed", "verified"}:
+        action.completed_at = None
+    db.add(
+        RemediationActionHistory(
+            remediation_action_id=action.id,
+            previous_status=previous_status,
+            new_status=action.status,
+            previous_progress=previous_progress,
+            new_progress=action.progress_percent,
+            note=history_note,
+            changed_by=user.id,
+        )
+    )
     await record_audit(
         db,
         request,
@@ -265,10 +314,35 @@ async def update_action(
         "Simulation action updated",
         user=user,
         entity_id=plan.id,
+        project_id=plan.project_id,
     )
     await db.commit()
     await db.refresh(action)
     return action
+
+
+@router.get(
+    "/remediation-actions/{action_id}/history",
+    response_model=list[RemediationHistoryResponse],
+)
+async def action_history(
+    action_id: str,
+    db: DB,
+    user: CurrentUser,
+) -> list[RemediationActionHistory]:
+    action = await db.get(RemediationAction, action_id)
+    if not action:
+        raise AppError(404, "Remediation action not found", "The action does not exist.", code="not_found")
+    await _plan_or_404(db, user, action.remediation_plan_id)
+    return list(
+        (
+            await db.scalars(
+                select(RemediationActionHistory)
+                .where(RemediationActionHistory.remediation_action_id == action.id)
+                .order_by(RemediationActionHistory.changed_at, RemediationActionHistory.id)
+            )
+        ).all()
+    )
 
 
 @router.delete("/remediation-actions/{action_id}", status_code=204)
@@ -290,6 +364,7 @@ async def delete_action(action_id: str, request: Request, db: DB, user: EditorCs
         "Simulation action deleted",
         user=user,
         entity_id=plan.id,
+        project_id=plan.project_id,
     )
     await db.delete(action)
     await db.commit()
@@ -362,6 +437,7 @@ async def preview_plan(plan_id: str, request: Request, db: DB, user: EditorCsrf)
         "Remediation simulation previewed",
         user=user,
         entity_id=plan.id,
+        project_id=plan.project_id,
     )
     await db.commit()
     return preview
@@ -434,6 +510,9 @@ async def create_derived_snapshot(plan_id: str, request: Request, db: DB, user: 
             privileged=node.privileged,
             risk_level=node.risk_level,
             metadata_json={**node.metadata_json, "simulated_from_node_id": node.id},
+            stable_fingerprint=node.stable_fingerprint,
+            first_seen_at=node.first_seen_at,
+            last_seen_at=derived.created_at,
         )
         db.add(clone)
         await db.flush()
@@ -480,6 +559,9 @@ async def create_derived_snapshot(plan_id: str, request: Request, db: DB, user: 
                     **relationship.metadata_json,
                     "simulated_from_relationship_id": relationship.id,
                 },
+                stable_fingerprint=relationship.stable_fingerprint,
+                first_seen_at=relationship.first_seen_at,
+                last_seen_at=derived.created_at,
             )
         )
     plan.status = "simulated"
@@ -491,6 +573,7 @@ async def create_derived_snapshot(plan_id: str, request: Request, db: DB, user: 
         "Derived simulation snapshot created",
         user=user,
         entity_id=derived.id,
+        project_id=plan.project_id,
         context={"source_snapshot_id": source.id, "plan_id": plan.id},
     )
     await db.commit()

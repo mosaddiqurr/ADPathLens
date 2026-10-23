@@ -1,3 +1,5 @@
+import hashlib
+import json
 from collections import Counter
 from typing import Annotated, Any
 
@@ -40,6 +42,11 @@ from app.services.authorization import project_or_404, snapshot_or_404
 router = APIRouter(tags=["findings"])
 
 
+def _finding_fingerprint(*parts: object) -> str:
+    value = json.dumps(parts, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
 async def _finding_or_404(db: DB, user: User, finding_id: str, minimum_role: str = "viewer") -> RiskFinding:
     finding = await db.get(RiskFinding, finding_id)
     if not finding:
@@ -75,6 +82,27 @@ async def risk_scan(snapshot_id: str, request: Request, db: DB, user: EditorCsrf
     detections = [detection for detection in run_rules(graph) if latest_enabled.get(detection.rule_id, True)]
     for detection in detections:
         score, severity = score_detection(detection)
+        node = await db.get(DirectoryNode, detection.node_id) if detection.node_id else None
+        relationship = (
+            await db.get(DirectoryRelationship, detection.relationship_id) if detection.relationship_id else None
+        )
+        fingerprint = _finding_fingerprint(
+            detection.rule_id,
+            node.external_id if node else None,
+            relationship.external_id if relationship else None,
+            detection.category,
+        )
+        previous = await db.scalar(
+            select(RiskFinding)
+            .where(
+                RiskFinding.project_id == snapshot.project_id,
+                RiskFinding.stable_fingerprint == fingerprint,
+                RiskFinding.snapshot_id != snapshot.id,
+            )
+            .order_by(RiskFinding.last_seen_at.desc())
+            .limit(1)
+        )
+        observed_at = utc_now()
         finding = RiskFinding(
             project_id=snapshot.project_id,
             snapshot_id=snapshot.id,
@@ -105,6 +133,10 @@ async def risk_scan(snapshot_id: str, request: Request, db: DB, user: EditorCsrf
                 "This finding is derived from imported relationships and requires human review. "
                 "It does not prove compromise or exploitability."
             ),
+            stable_fingerprint=fingerprint,
+            first_seen_at=previous.first_seen_at if previous else observed_at,
+            last_seen_at=observed_at,
+            recurrence_count=(previous.recurrence_count + 1) if previous else 1,
             created_by=user.id,
         )
         db.add(finding)
@@ -135,6 +167,7 @@ async def risk_scan(snapshot_id: str, request: Request, db: DB, user: EditorCsrf
         f"Risk scan created {len(detections)} draft finding(s)",
         user=user,
         entity_id=snapshot.id,
+        project_id=snapshot.project_id,
     )
     await db.commit()
     return await risk_summary(snapshot.id, db, user)
@@ -165,9 +198,12 @@ async def list_findings(
     confidence: str = "",
     status: str = "",
     sort: str = "-created_at",
+    snapshot_id: str = "",
 ) -> PageResponse:
     await project_or_404(db, user, project_id)
     conditions = [RiskFinding.project_id == project_id]
+    if snapshot_id:
+        conditions.append(RiskFinding.snapshot_id == snapshot_id)
     if search:
         term = f"%{search[:256]}%"
         conditions.append(or_(RiskFinding.title.ilike(term), RiskFinding.description.ilike(term)))
@@ -265,6 +301,17 @@ async def create_finding(
             "critical": 90,
         }[payload.severity],
         status="open",
+        stable_fingerprint=_finding_fingerprint(
+            "manual",
+            payload.category,
+            payload.title.strip().casefold(),
+            payload.node_id,
+            payload.relationship_id,
+            payload.privilege_path_id,
+        ),
+        first_seen_at=utc_now(),
+        last_seen_at=utc_now(),
+        recurrence_count=1,
         description=payload.description,
         technical_explanation=payload.technical_explanation,
         impact=payload.impact,
@@ -308,6 +355,7 @@ async def create_finding(
         "Manual finding created",
         user=user,
         entity_id=finding.id,
+        project_id=finding.project_id,
     )
     await db.commit()
     await db.refresh(finding)
@@ -376,6 +424,7 @@ async def update_finding(
         "Finding review updated",
         user=user,
         entity_id=finding.id,
+        project_id=finding.project_id,
         context={"previous_status": previous_status, "status": finding.status},
     )
     await db.commit()
@@ -443,6 +492,7 @@ async def add_finding_note(
         "Analyst note added",
         user=user,
         entity_id=finding.id,
+        project_id=finding.project_id,
     )
     await db.commit()
     await db.refresh(note)
@@ -470,6 +520,7 @@ async def update_note(
         "Analyst note updated",
         user=user,
         entity_id=note.id,
+        project_id=note.project_id,
     )
     await db.commit()
     await db.refresh(note)
@@ -490,6 +541,7 @@ async def delete_note(note_id: str, request: Request, db: DB, user: EditorCsrf) 
         "Analyst note deleted",
         user=user,
         entity_id=note.id,
+        project_id=note.project_id,
     )
     await db.delete(note)
     await db.commit()

@@ -55,11 +55,16 @@ def _has_executable_signature(data: bytes) -> bool:
 
 
 def _depth(value: Any, current: int = 0) -> int:
-    if isinstance(value, dict):
-        return max([current, *(_depth(item, current + 1) for item in value.values())])
-    if isinstance(value, list):
-        return max([current, *(_depth(item, current + 1) for item in value)])
-    return current
+    maximum = current
+    pending = [(value, current)]
+    while pending:
+        item, depth = pending.pop()
+        maximum = max(maximum, depth)
+        if isinstance(item, dict):
+            pending.extend((child, depth + 1) for child in item.values())
+        elif isinstance(item, list):
+            pending.extend((child, depth + 1) for child in item)
+    return maximum
 
 
 def _boolean(value: Any, default: bool) -> bool | None:
@@ -98,6 +103,11 @@ def validate_json_bytes(data: bytes, settings: Settings) -> ValidationResult:
         return result
     except json.JSONDecodeError as exc:
         result.messages.append(ValidationMessage("error", "invalid_json", "JSON is malformed.", f"line {exc.lineno}"))
+        return result
+    except RecursionError:
+        result.messages.append(
+            ValidationMessage("error", "json_too_deep", "JSON nesting exceeds the configured limit.")
+        )
         return result
     if _depth(parsed) > settings.max_json_depth:
         result.messages.append(
@@ -161,12 +171,16 @@ def validate_records(
         if isinstance(metadata, str):
             try:
                 metadata = json.loads(metadata)
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, RecursionError):
                 result.messages.append(
                     ValidationMessage("error", "invalid_metadata", "Metadata is not JSON.", location)
                 )
                 continue
-        if not isinstance(metadata, dict) or len(json.dumps(metadata)) > 65_536:
+        if (
+            not isinstance(metadata, dict)
+            or _depth(metadata) > settings.max_json_depth
+            or len(json.dumps(metadata)) > 65_536
+        ):
             result.messages.append(
                 ValidationMessage("error", "invalid_metadata", "Metadata must be a small object.", location)
             )
@@ -269,9 +283,17 @@ def validate_records(
                 evidence = json.loads(evidence)
             if isinstance(metadata, str):
                 metadata = json.loads(metadata)
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, RecursionError):
             result.messages.append(
                 ValidationMessage("error", "invalid_metadata", "Evidence or metadata is invalid.", location)
+            )
+            continue
+        if any(
+            not isinstance(value, dict) or _depth(value) > settings.max_json_depth or len(json.dumps(value)) > 65_536
+            for value in (evidence, metadata)
+        ):
+            result.messages.append(
+                ValidationMessage("error", "invalid_metadata", "Evidence and metadata must be small objects.", location)
             )
             continue
         relationship_ids.add(external_id)

@@ -1,0 +1,1118 @@
+{
+  "metadata": {
+    "name": "Northbridge Small Lab",
+    "description": "Entirely fictional synthetic Active Directory lab.",
+    "version": "1.0",
+    "fictional": true
+  },
+  "nodes": [
+    {
+      "id": "user-alex",
+      "type": "User",
+      "name": "Alex Carter",
+      "display_name": "Alex Carter",
+      "domain": "NORTHBRIDGE.LOCAL",
+      "enabled": true,
+      "privileged": false,
+      "high_value": false,
+      "description": "",
+      "metadata": {
+        "fictional": true
+      }
+    },
+    {
+      "id": "user-mina",
+      "type": "User",
+      "name": "Mina Rahman",
+      "display_name": "Mina Rahman",
+      "domain": "NORTHBRIDGE.LOCAL",
+      "enabled": true,
+      "privileged": false,
+      "high_value": false,
+      "description": "",
+      "metadata": {
+        "fictional": true
+      }
+    },
+    {
+      "id": "user-jordan",
+      "type": "User",
+      "name": "Jordan Lee",
+      "display_name": "Jordan Lee",
+      "domain": "NORTHBRIDGE.LOCAL",
+      "enabled": true,
+      "privileged": false,
+      "high_value": false,
+      "description": "",
+      "metadata": {
+        "fictional": true
+      }
+    },
+    {
+      "id": "user-priya",
+      "type": "User",
+      "name": "Priya Nair",
+      "display_name": "Priya Nair",
+      "domain": "NORTHBRIDGE.LOCAL",
+      "enabled": true,
+      "privileged": true,
+      "high_value": false,
+      "description": "",
+      "metadata": {
+        "fictional": true
+      }
+    },
+    {
+      "id": "user-omar",
+      "type": "User",
+      "name": "Omar Hassan",
+      "display_name": "Omar Hassan",
+      "domain": "NORTHBRIDGE.LOCAL",
+      "enabled": true,
+      "privileged": true,
+      "high_value": true,
+      "description": "",
+      "metadata": {
+        "fictional": true
+      }
+    },
+    {
+      "id": "svc-backup",
+      "type": "ServiceAccount",
+      "name": "svc_backup",
+      "display_name": "svc_backup",
+      "domain": "NORTHBRIDGE.LOCAL",
+      "enabled": true,
+      "privileged": true,
+      "high_value": false,
+      "description": "",
+      "metadata": {
+        "fictional": true
+      }
+    },
+    {
+      "id": "svc-web",
+      "type": "ServiceAccount",
+      "name": "svc_web",
+      "display_name": "svc_web",
+      "domain": "NORTHBRIDGE.LOCAL",
+      "enabled": true,
+      "privileged": false,
+      "high_value": false,
+      "description": "",
+      "metadata": {
+        "fictional": true
+      }
+    },
+    {
+      "id": "user-old-admin",
+      "type": "User",
+      "name": "old_admin",
+      "display_name": "old_admin",
+      "domain": "NORTHBRIDGE.LOCAL",
+      "enabled": false,
+      "privileged": true,
+      "high_value": false,
+      "description": "",
+      "metadata": {
+        "fictional": true
+      }
+    },
+    {
+      "id": "group-employees",
+      "type": "Group",
+      "name": "Employees",
+      "display_name": "Employees",
+      "domain": "NORTHBRIDGE.LOCAL",
+      "enabled": true,
+      "privileged": false,
+      "high_value": false,
+      "description": "",
+      "metadata": {
+        "fictional": true
+      }
+    },
+    {
+      "id": "group-helpdesk",
+      "type": "Group",
+      "name": "Helpdesk",
+      "display_name": "Helpdesk",
+      "domain": "NORTHBRIDGE.LOCAL",
+      "enabled": true,
+      "privileged": false,
+      "high_value": false,
+      "description": "",
+      "metadata": {
+        "fictional": true
+      }
+    },
+    {
+      "id": "group-it",
+      "type": "Group",
+      "name": "IT Support",
+      "display_name": "IT Support",
+      "domain": "NORTHBRIDGE.LOCAL",
+      "enabled": true,
+      "privileged": false,
+      "high_value": false,
+      "description": "",
+      "metadata": {
+        "fictional": true
+      }
+    },
+    {
+      "id": "group-server-ops",
+      "type": "Group",
+      "name": "Server Operators",
+      "display_name": "Server Operators",
+      "domain": "NORTHBRIDGE.LOCAL",
+      "enabled": true,
+      "privileged": true,
+      "high_value": false,
+      "description": "",
+      "metadata": {
+        "fictional": true
+      }
+    },
+    {
+      "id": "group-workstation-admins",
+      "type": "Group",
+      "name": "Workstation Admins",
+      "display_name": "Workstation Admins",
+      "domain": "NORTHBRIDGE.LOCAL",
+      "enabled": true,
+      "privileged": false,
+      "high_value": false,
+      "description": "",
+      "metadata": {
+        "fictional": true
+      }
+    },
+    {
+      "id": "group-backup-ops",
+      "type": "Group",
+      "name": "Backup Operators",
+      "display_name": "Backup Operators",
+      "domain": "NORTHBRIDGE.LOCAL",
+      "enabled": true,
+      "privileged": true,
+      "high_value": false,
+      "description": "",
+      "metadata": {
+        "fictional": true
+      }
+    },
+    {
+      "id": "group-domain-admins",
+      "type": "Group",
+      "name": "Domain Admins",
+      "display_name": "Domain Admins",
+      "domain": "NORTHBRIDGE.LOCAL",
+      "enabled": true,
+      "privileged": true,
+      "high_value": true,
+      "description": "",
+      "metadata": {
+        "fictional": true
+      }
+    },
+    {
+      "id": "group-enterprise-admins",
+      "type": "Group",
+      "name": "Enterprise Admins",
+      "display_name": "Enterprise Admins",
+      "domain": "NORTHBRIDGE.LOCAL",
+      "enabled": true,
+      "privileged": true,
+      "high_value": true,
+      "description": "",
+      "metadata": {
+        "fictional": true
+      }
+    },
+    {
+      "id": "computer-ws101",
+      "type": "Computer",
+      "name": "NB-WS-101",
+      "display_name": "NB-WS-101",
+      "domain": "NORTHBRIDGE.LOCAL",
+      "enabled": true,
+      "privileged": false,
+      "high_value": false,
+      "description": "",
+      "metadata": {
+        "fictional": true
+      }
+    },
+    {
+      "id": "computer-ws102",
+      "type": "Computer",
+      "name": "NB-WS-102",
+      "display_name": "NB-WS-102",
+      "domain": "NORTHBRIDGE.LOCAL",
+      "enabled": true,
+      "privileged": false,
+      "high_value": false,
+      "description": "",
+      "metadata": {
+        "fictional": true
+      }
+    },
+    {
+      "id": "computer-helpdesk",
+      "type": "Computer",
+      "name": "NB-HELPDESK-01",
+      "display_name": "NB-HELPDESK-01",
+      "domain": "NORTHBRIDGE.LOCAL",
+      "enabled": true,
+      "privileged": false,
+      "high_value": false,
+      "description": "",
+      "metadata": {
+        "fictional": true
+      }
+    },
+    {
+      "id": "computer-file",
+      "type": "Computer",
+      "name": "NB-FILE-01",
+      "display_name": "NB-FILE-01",
+      "domain": "NORTHBRIDGE.LOCAL",
+      "enabled": true,
+      "privileged": false,
+      "high_value": true,
+      "description": "",
+      "metadata": {
+        "fictional": true
+      }
+    },
+    {
+      "id": "computer-web",
+      "type": "Computer",
+      "name": "NB-WEB-01",
+      "display_name": "NB-WEB-01",
+      "domain": "NORTHBRIDGE.LOCAL",
+      "enabled": true,
+      "privileged": false,
+      "high_value": true,
+      "description": "",
+      "metadata": {
+        "fictional": true
+      }
+    },
+    {
+      "id": "computer-dc1",
+      "type": "Computer",
+      "name": "NB-DC-01",
+      "display_name": "NB-DC-01",
+      "domain": "NORTHBRIDGE.LOCAL",
+      "enabled": true,
+      "privileged": true,
+      "high_value": true,
+      "description": "",
+      "metadata": {
+        "fictional": true
+      }
+    },
+    {
+      "id": "computer-dc2",
+      "type": "Computer",
+      "name": "NB-DC-02",
+      "display_name": "NB-DC-02",
+      "domain": "NORTHBRIDGE.LOCAL",
+      "enabled": true,
+      "privileged": true,
+      "high_value": true,
+      "description": "",
+      "metadata": {
+        "fictional": true
+      }
+    },
+    {
+      "id": "ou-employees",
+      "type": "OrganizationalUnit",
+      "name": "Employees OU",
+      "display_name": "Employees OU",
+      "domain": "NORTHBRIDGE.LOCAL",
+      "enabled": true,
+      "privileged": false,
+      "high_value": false,
+      "description": "",
+      "metadata": {
+        "fictional": true
+      }
+    },
+    {
+      "id": "ou-workstations",
+      "type": "OrganizationalUnit",
+      "name": "Workstations OU",
+      "display_name": "Workstations OU",
+      "domain": "NORTHBRIDGE.LOCAL",
+      "enabled": true,
+      "privileged": false,
+      "high_value": false,
+      "description": "",
+      "metadata": {
+        "fictional": true
+      }
+    },
+    {
+      "id": "ou-servers",
+      "type": "OrganizationalUnit",
+      "name": "Servers OU",
+      "display_name": "Servers OU",
+      "domain": "NORTHBRIDGE.LOCAL",
+      "enabled": true,
+      "privileged": false,
+      "high_value": false,
+      "description": "",
+      "metadata": {
+        "fictional": true
+      }
+    },
+    {
+      "id": "ou-dcs",
+      "type": "OrganizationalUnit",
+      "name": "Domain Controllers OU",
+      "display_name": "Domain Controllers OU",
+      "domain": "NORTHBRIDGE.LOCAL",
+      "enabled": true,
+      "privileged": false,
+      "high_value": true,
+      "description": "",
+      "metadata": {
+        "fictional": true
+      }
+    },
+    {
+      "id": "gpo-baseline",
+      "type": "GroupPolicyObject",
+      "name": "Workstation Baseline",
+      "display_name": "Workstation Baseline",
+      "domain": "NORTHBRIDGE.LOCAL",
+      "enabled": true,
+      "privileged": false,
+      "high_value": false,
+      "description": "",
+      "metadata": {
+        "fictional": true
+      }
+    },
+    {
+      "id": "gpo-helpdesk",
+      "type": "GroupPolicyObject",
+      "name": "Helpdesk Delegation",
+      "display_name": "Helpdesk Delegation",
+      "domain": "NORTHBRIDGE.LOCAL",
+      "enabled": true,
+      "privileged": false,
+      "high_value": false,
+      "description": "",
+      "metadata": {
+        "fictional": true
+      }
+    },
+    {
+      "id": "gpo-server",
+      "type": "GroupPolicyObject",
+      "name": "Server Administration",
+      "display_name": "Server Administration",
+      "domain": "NORTHBRIDGE.LOCAL",
+      "enabled": true,
+      "privileged": false,
+      "high_value": false,
+      "description": "",
+      "metadata": {
+        "fictional": true
+      }
+    },
+    {
+      "id": "gpo-dc",
+      "type": "GroupPolicyObject",
+      "name": "Domain Controller Security",
+      "display_name": "Domain Controller Security",
+      "domain": "NORTHBRIDGE.LOCAL",
+      "enabled": true,
+      "privileged": false,
+      "high_value": true,
+      "description": "",
+      "metadata": {
+        "fictional": true
+      }
+    },
+    {
+      "id": "domain-northbridge",
+      "type": "Domain",
+      "name": "NORTHBRIDGE.LOCAL",
+      "display_name": "NORTHBRIDGE.LOCAL",
+      "domain": "NORTHBRIDGE.LOCAL",
+      "enabled": true,
+      "privileged": true,
+      "high_value": true,
+      "description": "",
+      "metadata": {
+        "fictional": true
+      }
+    },
+    {
+      "id": "ca-nb",
+      "type": "CertificateAuthority",
+      "name": "NB-CA-01",
+      "display_name": "NB-CA-01",
+      "domain": "NORTHBRIDGE.LOCAL",
+      "enabled": true,
+      "privileged": false,
+      "high_value": true,
+      "description": "",
+      "metadata": {
+        "fictional": true
+      }
+    },
+    {
+      "id": "template-web",
+      "type": "CertificateTemplate",
+      "name": "Northbridge Web Server",
+      "display_name": "Northbridge Web Server",
+      "domain": "NORTHBRIDGE.LOCAL",
+      "enabled": true,
+      "privileged": false,
+      "high_value": false,
+      "description": "",
+      "metadata": {
+        "fictional": true
+      }
+    },
+    {
+      "id": "share-finance",
+      "type": "FileShare",
+      "name": "Finance Restricted Share",
+      "display_name": "Finance Restricted Share",
+      "domain": "NORTHBRIDGE.LOCAL",
+      "enabled": true,
+      "privileged": false,
+      "high_value": true,
+      "description": "",
+      "metadata": {
+        "fictional": true
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "id": "rel-mina-helpdesk",
+      "source": "user-mina",
+      "target": "group-helpdesk",
+      "type": "MemberOf",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-helpdesk-priya",
+      "source": "group-helpdesk",
+      "target": "user-priya",
+      "type": "ResetPassword",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-priya-serverops",
+      "source": "user-priya",
+      "target": "group-server-ops",
+      "type": "MemberOf",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-serverops-web",
+      "source": "group-server-ops",
+      "target": "computer-web",
+      "type": "AdminTo",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-web-omar",
+      "source": "computer-web",
+      "target": "user-omar",
+      "type": "HasSession",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-omar-da",
+      "source": "user-omar",
+      "target": "group-domain-admins",
+      "type": "MemberOf",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-alex-employees",
+      "source": "user-alex",
+      "target": "group-employees",
+      "type": "MemberOf",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-jordan-it",
+      "source": "user-jordan",
+      "target": "group-it",
+      "type": "MemberOf",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-it-gpo",
+      "source": "group-it",
+      "target": "gpo-helpdesk",
+      "type": "CanEditGPO",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-gpo-workstations",
+      "source": "gpo-helpdesk",
+      "target": "ou-workstations",
+      "type": "LinkedGPO",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-gpo-ws101",
+      "source": "gpo-helpdesk",
+      "target": "computer-ws101",
+      "type": "AppliesGPO",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-backup-backupops",
+      "source": "svc-backup",
+      "target": "group-backup-ops",
+      "type": "MemberOf",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-backupops-file",
+      "source": "group-backup-ops",
+      "target": "computer-file",
+      "type": "AdminTo",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-file-omar",
+      "source": "computer-file",
+      "target": "user-omar",
+      "type": "HasSession",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-oldadmin-da",
+      "source": "user-old-admin",
+      "target": "group-domain-admins",
+      "type": "MemberOf",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-helpdesk-helpdeskpc",
+      "source": "group-helpdesk",
+      "target": "computer-helpdesk",
+      "type": "LocalAdmin",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-helpdeskpc-omar",
+      "source": "computer-helpdesk",
+      "target": "user-omar",
+      "type": "HasSession",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-da-dc1",
+      "source": "group-domain-admins",
+      "target": "computer-dc1",
+      "type": "AdminTo",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-da-dc2",
+      "source": "group-domain-admins",
+      "target": "computer-dc2",
+      "type": "AdminTo",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-ea-domain",
+      "source": "group-enterprise-admins",
+      "target": "domain-northbridge",
+      "type": "GenericAll",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-da-domain",
+      "source": "group-domain-admins",
+      "target": "domain-northbridge",
+      "type": "GenericAll",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-dc1-domain",
+      "source": "computer-dc1",
+      "target": "domain-northbridge",
+      "type": "Contains",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-dc2-domain",
+      "source": "computer-dc2",
+      "target": "domain-northbridge",
+      "type": "Contains",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-domain-ouemployees",
+      "source": "domain-northbridge",
+      "target": "ou-employees",
+      "type": "Contains",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-domain-ouworkstations",
+      "source": "domain-northbridge",
+      "target": "ou-workstations",
+      "type": "Contains",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-domain-ouservers",
+      "source": "domain-northbridge",
+      "target": "ou-servers",
+      "type": "Contains",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-domain-oudcs",
+      "source": "domain-northbridge",
+      "target": "ou-dcs",
+      "type": "Contains",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-servergpo-servers",
+      "source": "gpo-server",
+      "target": "ou-servers",
+      "type": "LinkedGPO",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-dcgpo-dcs",
+      "source": "gpo-dc",
+      "target": "ou-dcs",
+      "type": "LinkedGPO",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-baseline-workstations",
+      "source": "gpo-baseline",
+      "target": "ou-workstations",
+      "type": "LinkedGPO",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-web-svcweb",
+      "source": "computer-web",
+      "target": "svc-web",
+      "type": "ServiceRunsAs",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-priya-web",
+      "source": "user-priya",
+      "target": "computer-web",
+      "type": "CanRDP",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-workadmins-ws101",
+      "source": "group-workstation-admins",
+      "target": "computer-ws101",
+      "type": "AdminTo",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-workadmins-ws102",
+      "source": "group-workstation-admins",
+      "target": "computer-ws102",
+      "type": "AdminTo",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-it-workadmins",
+      "source": "group-it",
+      "target": "group-workstation-admins",
+      "type": "NestedMemberOf",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-template-ca",
+      "source": "ca-nb",
+      "target": "template-web",
+      "type": "PublishedTemplate",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-it-template",
+      "source": "group-it",
+      "target": "template-web",
+      "type": "Enroll",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-domain-ca",
+      "source": "domain-northbridge",
+      "target": "ca-nb",
+      "type": "TrustedBy",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-file-share",
+      "source": "computer-file",
+      "target": "share-finance",
+      "type": "Hosts",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-employees-alex",
+      "source": "group-employees",
+      "target": "user-alex",
+      "type": "Manages",
+      "confidence": "low",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-context-01",
+      "source": "computer-ws101",
+      "target": "group-employees",
+      "type": "ConnectedTo",
+      "confidence": "medium",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-context-02",
+      "source": "computer-ws102",
+      "target": "group-it",
+      "type": "ConnectedTo",
+      "confidence": "medium",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-context-03",
+      "source": "computer-ws101",
+      "target": "group-helpdesk",
+      "type": "ConnectedTo",
+      "confidence": "medium",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-context-04",
+      "source": "computer-ws102",
+      "target": "group-workstation-admins",
+      "type": "ConnectedTo",
+      "confidence": "medium",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-context-05",
+      "source": "computer-ws101",
+      "target": "computer-file",
+      "type": "ConnectedTo",
+      "confidence": "medium",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-context-06",
+      "source": "computer-ws102",
+      "target": "computer-web",
+      "type": "ConnectedTo",
+      "confidence": "medium",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-context-07",
+      "source": "computer-ws101",
+      "target": "computer-dc1",
+      "type": "ConnectedTo",
+      "confidence": "medium",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-context-08",
+      "source": "computer-ws102",
+      "target": "computer-dc2",
+      "type": "ConnectedTo",
+      "confidence": "medium",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-context-09",
+      "source": "computer-ws101",
+      "target": "ou-employees",
+      "type": "ConnectedTo",
+      "confidence": "medium",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-context-10",
+      "source": "computer-ws102",
+      "target": "ou-workstations",
+      "type": "ConnectedTo",
+      "confidence": "medium",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-context-11",
+      "source": "computer-ws101",
+      "target": "ou-servers",
+      "type": "ConnectedTo",
+      "confidence": "medium",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-context-12",
+      "source": "computer-ws102",
+      "target": "ou-dcs",
+      "type": "ConnectedTo",
+      "confidence": "medium",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-context-13",
+      "source": "computer-ws101",
+      "target": "gpo-baseline",
+      "type": "ConnectedTo",
+      "confidence": "medium",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-context-14",
+      "source": "computer-ws102",
+      "target": "gpo-server",
+      "type": "ConnectedTo",
+      "confidence": "medium",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-context-15",
+      "source": "computer-ws101",
+      "target": "share-finance",
+      "type": "ConnectedTo",
+      "confidence": "medium",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    },
+    {
+      "id": "rel-ws101-omar",
+      "source": "computer-ws101",
+      "target": "user-omar",
+      "type": "HasSession",
+      "confidence": "high",
+      "evidence": {
+        "source": "Synthetic ADPathLens lab",
+        "fictional": true
+      }
+    }
+  ]
+}
